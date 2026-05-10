@@ -158,8 +158,22 @@ Our model is at **published research paper level**, not just semester-project le
 
 ### Grad-CAM (for signatures)
 - **Full name:** Gradient-weighted Class Activation Mapping
-- **How it works:** Runs a backward pass through the network and finds which spatial regions of the image most influenced the output. Draws a heatmap over those regions.
-- **Output:** A colored overlay on the signature — red regions = the model focused here most
+- **How it works — step by step:**
+  1. Feed the test signature image through the VGG16 tower (forward pass)
+  2. Compute a "score" — we use the magnitude (norm) of the 128-dim embedding vector
+  3. Run backpropagation from that score — this asks: *"which neurons in the last conv layer caused this output?"*
+  4. The gradients tell us how much each feature map channel contributed to the output
+  5. Average gradients across spatial dimensions → one importance weight per channel
+  6. Multiply those weights by the activation maps (feature maps at that layer)
+  7. Sum across all channels → one 2D spatial importance map
+  8. Apply ReLU — only keep positive contributions (negative = irrelevant)
+  9. Resize the map back to match the original image size
+  10. Apply COLORMAP_JET: blue = low attention, yellow = medium, red = high attention
+  11. Blend with original image: 60% original + 40% heatmap
+- **Output:** A colored overlay — **red regions = the model focused here most** when analysing this signature
+- **Why it sometimes looks unclear or flat:**
+  - The Siamese network is not a classifier — it computes similarity, not a class probability. We backpropagate through the embedding norm, which is an approximation. If the model is very confident or the signature is very uniform, gradients flatten out and the heatmap looks evenly coloured.
+  - This is a known limitation of applying Grad-CAM to Siamese/metric learning networks. It still provides useful visual guidance for most signatures.
 
 ### SHAP (for text)
 - **Full name:** SHapley Additive exPlanations
@@ -243,6 +257,12 @@ A: To test if the model can verify signatures of completely new people it has ne
 
 **Q: What would you improve with more time?**
 A: (1) Train on larger signature datasets, (2) Use a ViT (Vision Transformer) instead of VGG16, (3) Try larger RoBERTa-large instead of roberta-base, (4) Collect domain-specific legal document text data instead of political statements.
+
+**Q: What about skilled forgeries — if a forger copies a signature well, won't it score high and fool the system?**
+A: This is a real and well-known challenge in the field. A forger copies what they *see* — the overall shape. But the Siamese CNN compares 128-dimensional embedding vectors that encode micro-level stroke patterns invisible to the human eye: stroke curvature at the pixel level, pen pressure distribution, how strokes begin and end, relative proportions between letters. A forger produces different micro-patterns even when the overall shape looks the same. The CEDAR dataset specifically uses *skilled* forgeries — forgers who practiced before the final attempt. The model achieves 80.21% accuracy on those skilled forgeries. The remaining ~20% that fool the system is why this is a screening tool, not a final verdict — a human forensic document examiner investigates further.
+
+**Q: How does the Grad-CAM heatmap work?**
+A: Grad-CAM (Gradient-weighted Class Activation Mapping) runs a backward pass through the network. It asks: *which spatial regions of the image caused the strongest gradient signal in the last convolutional layer?* Those regions are highlighted in red. It blends the heatmap (40%) with the original image (60%) so you can see exactly which pen strokes the model focused on. Sometimes the heatmap looks flat — this happens because Siamese networks compute similarity, not classification, so backpropagating through the embedding norm is an approximation.
 
 **Q: Why does the text model sometimes mark fraudulent contracts as TRUTHFUL?**
 A: The text model was trained on the LIAR dataset — short political statements from PolitiFact. It learned deception patterns in political language. Legal/financial contract fraud uses formal professional language ("internationally certified", "guaranteed returns") which the model associates with truthful formal speech. This is a dataset domain mismatch, not a model architecture failure. A domain-specific legal fraud dataset would solve this.
