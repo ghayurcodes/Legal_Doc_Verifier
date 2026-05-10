@@ -53,7 +53,7 @@ class SupervisorAgent:
             'combined_risk':     round(combined_risk, 3),
             'signature_score':   round(sig_score, 3),
             'deception_score':   round(text_deception_score, 3),
-            'signature_verdict': 'FORGED'    if sig_score < 0.7 else 'GENUINE',
-            'text_verdict':      'DECEPTIVE' if text_risk >= 0.5 else 'TRUTHFUL',
+            'signature_verdict': 'FORGED'    if sig_score  < 0.70 else 'GENUINE',
+            'text_verdict':      'DECEPTIVE' if text_risk  >= 0.45 else 'TRUTHFUL',
             'confidence':        confidence
         }

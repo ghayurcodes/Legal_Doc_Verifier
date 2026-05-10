@@ -61,7 +61,7 @@ print("[OK] RoBERTa loaded")
 prep_agent  = PreprocessingAgent()
 sig_agent   = SignatureAgent(siamese_model, DEVICE)
 txt_agent   = TextAgent(nlp_model, tokenizer, DEVICE)
-sup_agent   = SupervisorAgent(sig_weight=0.6, text_weight=0.4, threshold=0.5)
+sup_agent   = SupervisorAgent(sig_weight=0.6, text_weight=0.4, threshold=0.4)
 cam_agent   = GradCAMAgent(siamese_model)
 shap_agent  = SHAPTextAgent(nlp_model, tokenizer, DEVICE)
 
@@ -73,6 +73,54 @@ print("[OK] All agents ready\n")
 # This function is called every time the user clicks "Verify"
 # ─────────────────────────────────────────────────────────────
 
+def is_valid_signature_image(img_path, label="Image"):
+    """
+    Smart input validation for signature images.
+    label: "Reference Signature" or "Test Signature" for clear error messages.
+    Returns (True, "") or (False, user_friendly_error_string).
+    """
+    from PIL import Image as PILImage
+    import numpy as np
+
+    try:
+        img = PILImage.open(img_path)
+        w, h = img.size
+
+        # Check 1: Minimum dimensions
+        if w < 30 or h < 30:
+            return False, (
+                f"{label} is too small ({w}x{h} px). "
+                "Please upload a proper signature scan."
+            )
+
+        # Check 2: Aspect ratio — only reject very extreme portrait images
+        ratio = w / h
+        if ratio < 0.3:
+            return False, (
+                f"{label} looks like a portrait photo "
+                f"({w}x{h} px — height much larger than width). "
+                "Please upload a horizontal signature image."
+            )
+
+        # Check 3: Reject completely blank / solid color images
+        # Use std deviation — a real signature always has variation in pixels.
+        # Threshold is very low (5) so even thin-stroked signatures pass.
+        arr = np.array(img.convert('L'), dtype=float)
+        if arr.std() < 5:
+            return False, (
+                f"{label} appears to be blank or a solid color. "
+                "Please upload a signature image."
+            )
+
+        return True, ""
+
+    except Exception:
+        return False, (
+            f"{label}: Could not read the file. "
+            "Please upload a valid PNG or JPG image."
+        )
+
+
 def verify_document(ref_sig_path, test_sig_path, claim_text):
     """
     ref_sig_path  : reference (known genuine) signature image path
@@ -80,11 +128,30 @@ def verify_document(ref_sig_path, test_sig_path, claim_text):
     claim_text    : the document text to analyze for deception
     """
 
-    # ── Step 1: Validate inputs ───────────────────────────────
+    # ── Step 1: Basic presence checks ────────────────────────
     if ref_sig_path is None or test_sig_path is None:
         return None, "⚠️ Please upload both signature images."
     if not claim_text or claim_text.strip() == "":
         return None, "⚠️ Please enter the document text."
+    if len(claim_text.strip()) < 20:
+        return None, "⚠️ Please enter more text (at least a full sentence)."
+
+    # ── Step 2: Same image uploaded twice? ───────────────────
+    if ref_sig_path == test_sig_path:
+        return None, (
+            "⚠️ Both image boxes have the same image. "
+            "Please upload two different signatures — "
+            "the Reference (known genuine) and the Test signature."
+        )
+
+    # ── Step 3: Validate each image ──────────────────────────
+    ok, reason = is_valid_signature_image(ref_sig_path, "Reference Signature")
+    if not ok:
+        return None, f"⚠️ {reason}"
+
+    ok, reason = is_valid_signature_image(test_sig_path, "Test Signature")
+    if not ok:
+        return None, f"⚠️ {reason}"
 
     # ── Step 2: Preprocess inputs ─────────────────────────────
     ref_tensor  = prep_agent.prepare_signature(ref_sig_path)
@@ -103,7 +170,6 @@ def verify_document(ref_sig_path, test_sig_path, claim_text):
     top_words   = shap_agent.get_top_words(clean_text, n=5)
 
     # ── Step 6: Format output ─────────────────────────────────
-    # Choose emoji based on verdict
     verdict_emoji = "🚨 SUSPICIOUS" if result['verdict'] == "SUSPICIOUS" else "✅ AUTHENTIC"
     sig_emoji     = "❌ FORGED"    if result['signature_verdict'] == "FORGED"    else "✅ GENUINE"
     txt_emoji     = "⚠️ DECEPTIVE" if result['text_verdict']      == "DECEPTIVE" else "✅ TRUTHFUL"
@@ -127,7 +193,7 @@ def verify_document(ref_sig_path, test_sig_path, claim_text):
 | Text Deception | `{result['deception_score']:.3f}` | {txt_emoji} |
 | **Combined Risk** | **`{result['combined_risk']:.3f}`** | **{verdict_emoji}** |
 
-> Signature: higher = more genuine. Text Deception: lower = more truthful. Combined Risk: lower = more authentic. Threshold = 0.5.
+> Signature genuine if ≥ 0.70 · Text deceptive if ≥ 0.45 · Combined suspicious if ≥ 0.40
 
 ---
 

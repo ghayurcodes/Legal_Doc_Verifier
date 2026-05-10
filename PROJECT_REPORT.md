@@ -174,8 +174,10 @@ text_risk    = deception_score               (truthful=low, deceptive=high)
 
 combined_risk = (0.6 × sig_risk) + (0.4 × text_risk)
 
-if combined_risk ≥ 0.5  →  SUSPICIOUS
-else                     →  AUTHENTIC
+if signature_similarity < 0.70  →  individually labelled FORGED
+if text_risk            ≥ 0.45  →  individually labelled DECEPTIVE
+if combined_risk        ≥ 0.40  →  final verdict SUSPICIOUS
+else                             →  AUTHENTIC
 ```
 
 **Why 60/40 split?** A forged physical signature is stronger evidence of fraud than suspicious text alone. Text can be misleading without being fraud.
