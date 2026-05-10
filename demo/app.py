@@ -9,9 +9,12 @@ Command to run:
 
 import gradio as gr
 import torch
-from transformers import RobertaTokenizer
+from transformers import RobertaTokenizer, logging as hf_logging
 import sys
 import os
+
+# Suppress noisy HuggingFace weight mismatch warnings (expected — our head differs from base model)
+hf_logging.set_verbosity_error()
 
 # Add parent directory to path so we can import our modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -136,13 +139,7 @@ def verify_document(ref_sig_path, test_sig_path, claim_text):
     if len(claim_text.strip()) < 20:
         return None, "⚠️ Please enter more text (at least a full sentence)."
 
-    # ── Step 2: Same image uploaded twice? ───────────────────
-    if ref_sig_path == test_sig_path:
-        return None, (
-            "⚠️ Both image boxes have the same image. "
-            "Please upload two different signatures — "
-            "the Reference (known genuine) and the Test signature."
-        )
+    # (Same image in both boxes is allowed — useful for testing baseline similarity)
 
     # ── Step 3: Validate each image ──────────────────────────
     ok, reason = is_valid_signature_image(ref_sig_path, "Reference Signature")
@@ -153,12 +150,12 @@ def verify_document(ref_sig_path, test_sig_path, claim_text):
     if not ok:
         return None, f"⚠️ {reason}"
 
-    # ── Step 2: Preprocess inputs ─────────────────────────────
+    # ── Step 4: Preprocess inputs ───────────────────────────────
     ref_tensor  = prep_agent.prepare_signature(ref_sig_path)
     test_tensor = prep_agent.prepare_signature(test_sig_path)
     clean_text  = prep_agent.prepare_text(claim_text)
 
-    # ── Step 3: Run models ────────────────────────────────────
+    # ── Step 5: Run models ────────────────────────────────────
     sig_score       = sig_agent.verify(ref_tensor, test_tensor)
     deception_score = txt_agent.analyze(clean_text)
 
@@ -175,10 +172,13 @@ def verify_document(ref_sig_path, test_sig_path, claim_text):
     txt_emoji     = "⚠️ DECEPTIVE" if result['text_verdict']      == "DECEPTIVE" else "✅ TRUTHFUL"
 
     # Format SHAP word list
-    shap_lines = "\n".join([
-        f"- **{w}** → score: `{v:+.3f}` {'🔴' if v > 0 else '🟢'}"
-        for w, v in top_words
-    ])
+    if top_words:
+        shap_lines = "\n".join([
+            f"- **{w}** → score: `{v:+.3f}` {'🔴' if v > 0 else '🟢'}"
+            for w, v in top_words
+        ])
+    else:
+        shap_lines = "*No significant individual words detected in this text.*"
 
     verdict_text = f"""
 ## {verdict_emoji}

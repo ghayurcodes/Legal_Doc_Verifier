@@ -89,11 +89,13 @@ class GradCAMAgent:
         cam = (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
 
         # ── Overlay heatmap on original image ─────────────────
-        original = np.array(Image.open(img_path_original).resize((256, 128)))
+        original = np.array(
+            Image.open(img_path_original).convert('RGB').resize((256, 128))
+        )  # always convert to RGB — handles RGBA/grayscale originals
 
-        # If grayscale image, convert to RGB for overlay
-        if original.ndim == 2:
-            original = cv2.cvtColor(original, cv2.COLOR_GRAY2RGB)
+        # Guard: if gradients were not captured, return original image
+        if self.gradients is None or self.activations is None:
+            return Image.fromarray(original)
 
         # Create colored heatmap (blue=low attention, red=high attention)
         heatmap = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)

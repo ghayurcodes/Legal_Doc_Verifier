@@ -119,7 +119,7 @@ class DeceptionClassifier(nn.Module):
         enc = tokenizer(
             text,
             return_tensors='pt',
-            max_length=128,
+            max_length=256,
             truncation=True,
             padding='max_length'
         )

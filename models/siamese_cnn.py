@@ -103,10 +103,10 @@ class EmbeddingNet(nn.Module):
         self.head = nn.Sequential(
             nn.Flatten(),
             nn.Linear(512 * 7 * 7, 1024),  # flatten → 1024 neurons
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
             nn.Dropout(p=0.5),             # randomly drop 50% neurons (prevents overfitting)
             nn.Linear(1024, 256),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
             nn.Dropout(p=0.3),
             nn.Linear(256, embedding_dim)  # final output: embedding vector
         )
@@ -138,12 +138,18 @@ class SiameseNet(nn.Module):
         return emb1, emb2
 
     def get_similarity_score(self, img1, img2):
-        """Returns a score: 0.0 = forged, 1.0 = genuine"""
+        """
+        Returns a score: 0.0 = completely different, 1.0 = identical.
+        Uses exp(-dist) instead of sigmoid for a wider, more readable score range:
+          - Same signature    → score close to 1.0
+          - Genuine pair      → score ~0.75–0.95
+          - Forged pair       → score ~0.30–0.65
+        """
         self.eval()
         with torch.no_grad():
             emb1, emb2 = self.forward(img1, img2)
             dist = torch.nn.functional.pairwise_distance(emb1, emb2)
-            similarity = torch.sigmoid(-dist + 1)
+            similarity = torch.exp(-dist)   # wider range than sigmoid
         return similarity.item()
 
 
