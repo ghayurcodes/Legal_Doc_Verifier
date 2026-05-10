@@ -85,6 +85,11 @@ Think of it like: instead of asking "is this signature real?", it asks "does thi
 - **Why freeze early layers?** Early layers detect universal features (edges, curves) that are the same for any image. Freezing saves time and prevents overfitting.
 - **Embedding size:** 128 dimensions — each signature becomes a 128-number vector
 - **Distance function:** Euclidean distance between the two 128-dim vectors
+- **Similarity formula:** `score = exp(−distance)` — maps distance to 0.0–1.0 range:
+  - Same signature uploaded twice → score ≈ **1.0**
+  - Genuine pair (same person, different signature) → score ≈ **0.75–0.95**
+  - Forged pair (different person) → score ≈ **0.30–0.65**
+  - Threshold: score ≥ 0.70 → GENUINE, score < 0.70 → FORGED
 - **Loss function:** Contrastive Loss — penalizes the model if it brings forged pairs too close together or pushes genuine pairs too far apart
 
 ### Training Setup
@@ -109,9 +114,9 @@ RoBERTa (Robustly Optimized BERT Pretraining Approach) is a **transformer-based 
 
 ### Architecture
 - **Base model:** roberta-base (125M parameters)
-- **Our modification:** Removed RoBERTa's original language model head. Added our own 2-class classifier head (Truthful / Deceptive)
-- **Classifier head:** Linear(768 → 256) → ReLU → Dropout(0.3) → Linear(256 → 2)
-- **Input:** Raw statement text, tokenized to max 256 tokens
+- **Our modification:** Removed RoBERTa's original language model head. Added our own 3-layer classifier head (Truthful / Deceptive)
+- **Classifier head:** Linear(768 → 512) → ReLU → Dropout(0.3) → Linear(512 → 128) → ReLU → Dropout(0.3) → Linear(128 → 2)
+- **Input:** Raw statement text, tokenized to max **256 tokens**
 
 ### Which layers were frozen/unfrozen?
 **All layers were fine-tuned (nothing frozen).** This is called "full fine-tuning" — it's the standard approach for hard classification datasets and gives the best accuracy on LIAR.
@@ -238,6 +243,15 @@ A: To test if the model can verify signatures of completely new people it has ne
 
 **Q: What would you improve with more time?**
 A: (1) Train on larger signature datasets, (2) Use a ViT (Vision Transformer) instead of VGG16, (3) Try larger RoBERTa-large instead of roberta-base, (4) Collect domain-specific legal document text data instead of political statements.
+
+**Q: Why does the text model sometimes mark fraudulent contracts as TRUTHFUL?**
+A: The text model was trained on the LIAR dataset — short political statements from PolitiFact. It learned deception patterns in political language. Legal/financial contract fraud uses formal professional language ("internationally certified", "guaranteed returns") which the model associates with truthful formal speech. This is a dataset domain mismatch, not a model architecture failure. A domain-specific legal fraud dataset would solve this.
+
+**Q: What does the similarity score mean? Why are the values close together?**
+A: The score is computed as `exp(−euclidean_distance)` between the two signature embeddings. Identical signatures score ≈1.0. Genuine pairs from the same person score ~0.75–0.95. Forged pairs score ~0.30–0.65. The system uses a 0.70 threshold — anything below that is classified as FORGED.
+
+**Q: Can you modify the model architecture files (.py) to change the output?**
+A: No. The `.py` files only define the layer structure (blueprint). The trained weights — the actual learned knowledge — are in the `.pt` files. Changing the architecture without retraining would cause a shape mismatch crash. Only the decision thresholds in the supervisor can be tuned post-training.
 
 ---
 
