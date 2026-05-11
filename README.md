@@ -1,6 +1,6 @@
 # Legal Document Authenticity Verifier
 **Semester Project — Data Science**
-Stack: Python · PyTorch · HuggingFace Transformers · Gradio · Google Colab
+Stack: Python · PyTorch · HuggingFace Transformers · React · FastAPI · Google Colab
 
 ---
 
@@ -18,7 +18,7 @@ A **Supervisor Agent** combines both verdicts into one authenticity report with:
 - **Grad-CAM** heatmap showing suspicious signature strokes
 - **SHAP** token attribution showing deceptive words
 
-Everything runs behind a **Gradio web UI**.
+Everything runs behind a **React SPA** communicating with a **FastAPI backend**.
 
 ---
 
@@ -26,37 +26,26 @@ Everything runs behind a **Gradio web UI**.
 
 ```
 legal_doc_verifier/
-├── data/
-│   ├── cedar/
-│   │   ├── full_org/          ← genuine signature images
-│   │   └── full_forg/         ← forged signature images
-│   └── liar/
-│       ├── train.tsv
-│       ├── test.tsv
-│       └── valid.tsv
-├── models/
-│   ├── siamese_cnn.py         ← Siamese network architecture
-│   ├── roberta_nlp.py         ← RoBERTa classifier architecture
-│   └── saved/
-│       ├── siamese_best.pt    ← trained weights (download from Colab)
-│       └── roberta_deception.pt
-├── agents/
-│   ├── preprocessing.py       ← cleans inputs
-│   ├── signature_agent.py     ← runs CV model
-│   ├── text_agent.py          ← runs NLP model
-│   ├── xai_agent.py           ← coordinates Grad-CAM + SHAP
-│   └── supervisor.py          ← combines verdicts, final decision
-├── xai/
-│   ├── gradcam.py             ← Grad-CAM on signature images
-│   └── shap_text.py           ← SHAP on text predictions
-├── evaluate/
-│   └── metrics.py             ← accuracy, F1, confusion matrix, ROC
-├── demo/
-│   └── app.py                 ← Gradio web UI
+├── backend/
+│   ├── api.py                 ← FastAPI server
+│   ├── models/
+│   │   ├── siamese_cnn.py     ← Siamese network architecture
+│   │   ├── roberta_nlp.py     ← RoBERTa classifier architecture
+│   │   └── saved/
+│   │       ├── siamese_best.pt
+│   │       └── roberta_deception.pt
+│   ├── agents/                ← Inference pipeline agents
+│   ├── xai/                   ← Explainability scripts (Grad-CAM, SHAP)
+│   ├── data/                  ← Test datasets
+│   └── requirements.txt       ← Backend dependencies
+├── frontend/                  ← React user interface
+│   ├── src/
+│   ├── index.html
+│   └── package.json
 ├── colab_notebooks/
-│   ├── notebook1_siamese_training.py   ← copy into Colab Notebook 1
-│   └── notebook2_roberta_training.py   ← copy into Colab Notebook 2
-└── requirements.txt
+│   ├── notebook1_siamese_training.py
+│   └── notebook2_roberta_training.py
+└── README.md
 ```
 
 ---
@@ -72,9 +61,17 @@ legal_doc_verifier/
 
 ## Step-by-Step Setup
 
-### Step 1 — Install local dependencies
+### Step 1 — Install Dependencies
+**Backend:**
 ```bash
+cd backend
 pip install -r requirements.txt
+```
+
+**Frontend:**
+```bash
+cd frontend
+npm install
 ```
 
 ### Step 2 — Upload datasets to Google Drive
@@ -99,18 +96,29 @@ Upload these two zip files to `My Drive/ds_project/` in your Google Drive:
 4. **After training** — run Cell 8 immediately to save to Drive
 5. Download `roberta_deception.pt` from Drive → put in `models/saved/`
 
-### Step 5 — Run the Gradio Demo
+### Step 5 — Run the Application
+
+You need two terminals running simultaneously.
+
+**Terminal 1 — Backend:**
 ```bash
-cd legal_doc_verifier
-python demo/app.py
+cd backend
+python -m uvicorn api:app --reload --port 8000
 ```
-Open the URL shown in the terminal (usually `http://127.0.0.1:7860`)
+
+**Terminal 2 — Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+
+Open your browser to: `http://localhost:5173`
 
 ---
 
-## How to Use the Demo
+## How to Use the App
 
-The Gradio UI has **3 inputs**:
+The web UI has **3 inputs**:
 
 | Input | What to provide |
 |---|---|
@@ -118,7 +126,7 @@ The Gradio UI has **3 inputs**:
 | Test Signature | The signature to verify — use `full_org/` for genuine or `full_forg/` for forged |
 | Document Text | Paste any text — type something deceptive or truthful |
 
-Click **Verify Document** → see the report.
+Click **Verify Document Authenticity** → see the report.
 
 ---
 
@@ -166,7 +174,7 @@ Signature gets **60% weight** because a forged signature is a stronger fraud sig
 > "The supervisor agent combines scores from two completely independent models using a weighted decision rule.
 > Grad-CAM shows which stroke regions in the signature triggered the forgery flag.
 > SHAP shows which words in the text drove the deception score.
-> Both are visible side by side in the demo."
+> Both are visible side by side in the web UI."
 
 ---
 
@@ -178,5 +186,5 @@ See `requirements.txt` for the full list. Key libraries:
 - `shap` — text explainability
 - `opencv-python` — Grad-CAM image processing
 - `optuna` — hyperparameter optimization (Colab only)
-- `gradio` — web UI
-- `scikit-learn` — evaluation metrics
+- `fastapi`, `uvicorn` — REST API backend
+- `react`, `vite` — frontend framework

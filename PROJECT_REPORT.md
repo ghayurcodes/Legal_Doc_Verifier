@@ -48,7 +48,7 @@ User uploads → Reference Signature + Test Signature + Document Text
                │  SHAP → top words in text     │
                └──────────────────────────────┘
                               ↓
-                      Final Report (Gradio UI)
+                      Final Report (React UI)
 ```
 
 ---
@@ -212,7 +212,8 @@ else                             →  AUTHENTIC
 | Image Model | VGG16 (torchvision) |
 | NLP Model | RoBERTa (HuggingFace Transformers) |
 | XAI | Grad-CAM (manual hooks) + SHAP |
-| Web Interface | Gradio |
+| Web Interface | React + Vite (Frontend) |
+| API Server | FastAPI (Backend) |
 | Training Platform | Google Colab (T4 GPU) |
 
 ---
@@ -276,4 +277,4 @@ A: No. The `.py` files only define the layer structure (blueprint). The trained 
 ---
 
 *This document covers the full technical scope of the Legal Document Authenticity Verifier project.*
-*Signature Model: Siamese CNN (VGG16) | Text Model: RoBERTa-base | Interface: Gradio*
+*Signature Model: Siamese CNN (VGG16) | Text Model: RoBERTa-base | Interface: React + FastAPI*
