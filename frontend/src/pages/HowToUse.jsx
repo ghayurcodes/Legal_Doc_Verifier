@@ -43,7 +43,7 @@ const steps = [
 const faqs = [
   {
     q: 'How accurate is the Unfair Clause detection?',
-    a: 'The RoBERTa model was fine-tuned on the LexGLUE UNFAIR-ToS benchmark—a professional dataset of real terms of service. It achieves an outstanding 96.33% accuracy in flagging predatory or risky clauses.',
+    a: 'The RoBERTa model was fine-tuned on the LexGLUE UNFAIR-ToS benchmark—a professional dataset of real terms of service. It achieves an outstanding 95.83% accuracy in flagging predatory or risky clauses.',
   },
   {
     q: 'Can a skilled forger fool the signature model?',

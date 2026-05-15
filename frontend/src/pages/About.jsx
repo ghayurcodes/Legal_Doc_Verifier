@@ -85,8 +85,8 @@ export default function About() {
         <div className="stats-row">
           {[
             { v: '80.21%', l: 'Signature Accuracy' },
-            { v: '96.33%', l: 'Clause Accuracy' },
-            { v: '0.90',   l: 'F1 Score (Outstanding)' },
+            { v: '95.83%', l: 'Clause Accuracy' },
+            { v: '89.65%', l: 'Macro F1 Score' },
             { v: '125M',   l: 'RoBERTa Parameters' },
           ].map(s => (
             <div key={s.l} className="stat-card glass">

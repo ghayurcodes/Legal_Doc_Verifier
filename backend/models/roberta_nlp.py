@@ -70,66 +70,44 @@ class LIARDataset(Dataset):
 # ─────────────────────────────────────────────────────────────
 
 class DeceptionClassifier(nn.Module):
+    """
+    RoBERTa-base + 3-layer MLP head for binary legal clause classification.
+    """
 
-    def __init__(self, dropout=0.3):
+    def __init__(self, dropout: float = 0.3):
         super().__init__()
-
-        # Load pretrained RoBERTa — knows English language deeply
         self.roberta = RobertaModel.from_pretrained('roberta-base')
 
-        # Freeze ALL RoBERTa weights — we do NOT retrain it
         for param in self.roberta.parameters():
-            param.requires_grad = False
+            param.requires_grad = True                       # full fine-tuning
 
-        hidden_size = self.roberta.config.hidden_size  # 768 (RoBERTa output size)
+        hidden = self.roberta.config.hidden_size             # 768
 
-        # Our custom trainable classification head
-        # Input: 768 numbers from RoBERTa's [CLS] token
-        # Output: 2 numbers (scores for truthful vs deceptive)
         self.classifier = nn.Sequential(
-            nn.Linear(hidden_size, 512),  # 768 → 512
+            nn.Linear(hidden, 512),
+            nn.LayerNorm(512),                               # NEW — gradient stability
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(512, 128),          # 512 → 128
+            nn.Linear(512, 128),
+            nn.LayerNorm(128),                               # NEW — gradient stability
             nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(128, 2)             # 128 → 2 (truthful or deceptive)
+            nn.Dropout(dropout / 2),                         # NEW — lighter on 2nd layer
+            nn.Linear(128, 2),                               # 0 = SAFE, 1 = UNFAIR
         )
 
     def forward(self, input_ids, attention_mask):
-        # Pass text through RoBERTa
-        out = self.roberta(
-            input_ids=input_ids,
-            attention_mask=attention_mask
-        )
+        out = self.roberta(input_ids=input_ids, attention_mask=attention_mask)
+        cls = out.last_hidden_state[:, 0, :]                 # [CLS] token
+        return self.classifier(cls)
 
-        # Take the [CLS] token output — it represents the whole sentence
-        cls_embedding = out.last_hidden_state[:, 0, :]  # shape: (batch, 768)
-
-        # Pass through our classifier head
-        logits = self.classifier(cls_embedding)  # shape: (batch, 2)
-        return logits
-
-    def predict_deception_score(self, text, tokenizer, device):
-        """
-        Takes a plain text string.
-        Returns a float: 0.0 = very truthful, 1.0 = very deceptive
-        """
+    def predict_deception_score(self, text: str, tokenizer, device) -> float:
         self.eval()
         enc = tokenizer(
-            text,
-            return_tensors='pt',
-            max_length=256,
-            truncation=True,
-            padding='max_length'
+            text, return_tensors='pt',
+            max_length=256, truncation=True, padding='max_length',
         )
-        enc = {k: v.to(device) for k, v in enc.items()}
-
+        enc = {k: v.to(device) for k, v in enc.items()
+               if k in ('input_ids', 'attention_mask')}
         with torch.no_grad():
             logits = self.forward(enc['input_ids'], enc['attention_mask'])
-
-        # Convert raw scores to probabilities (they sum to 1.0)
-        probs = torch.softmax(logits, dim=1)
-
-        # Return probability of class 1 (deceptive)
-        return probs[0][1].item()
+        return torch.softmax(logits, dim=1)[0][1].item()   # P(UNFAIR)
