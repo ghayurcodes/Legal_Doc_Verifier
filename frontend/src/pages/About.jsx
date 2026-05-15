@@ -10,8 +10,8 @@ const features = [
   {
     icon: '🧠',
     bg: 'rgba(100,149,237,0.12)',
-    title: 'Text Deception Detection',
-    desc: 'Fine-tuned RoBERTa (125M parameters) analyses the linguistic patterns of the document text and assigns a deception probability score.',
+    title: 'Predatory Clause Detection',
+    desc: 'Fine-tuned RoBERTa analyses the linguistic patterns of the document text to flag unfair, high-risk, or predatory legal clauses.',
   },
   {
     icon: '🔥',
@@ -23,7 +23,7 @@ const features = [
     icon: '📊',
     bg: 'rgba(76,175,125,0.12)',
     title: 'SHAP Word Attribution',
-    desc: 'SHapley Additive exPlanations reveal which specific words in the document pushed the deception score up or down.',
+    desc: 'SHapley Additive exPlanations reveal which specific words in the document drove the risk score toward SAFE or UNFAIR.',
   },
   {
     icon: '⚖️',
@@ -41,7 +41,7 @@ const features = [
 
 const techStack = [
   { label: 'Signature Model', value: 'Siamese CNN', sub: 'VGG16 backbone · CEDAR dataset' },
-  { label: 'Text Model',      value: 'RoBERTa-base', sub: 'Fine-tuned · LIAR dataset' },
+  { label: 'Text Model',      value: 'RoBERTa-base', sub: 'Fine-tuned · LexGLUE UNFAIR-ToS' },
   { label: 'Explainability',  value: 'Grad-CAM + SHAP', sub: 'XAI for images and text' },
   { label: 'Backend',         value: 'FastAPI + PyTorch', sub: 'REST API · CPU inference' },
   { label: 'Frontend',        value: 'React + Vite', sub: 'Modern SPA' },
@@ -61,13 +61,13 @@ export default function About() {
 
           <h1>
             Detect Forged Signatures<br />
-            &amp; <span className="gold">Deceptive Documents</span><br />
+            &amp; <span className="gold">Predatory Clauses</span><br />
             with Deep Learning
           </h1>
 
           <p className="hero-sub">
             LegalVerify combines a Siamese CNN for signature verification
-            and a fine-tuned RoBERTa transformer for text deception detection —
+            and a fine-tuned RoBERTa transformer to detect unfair legal clauses —
             delivering explainable, forensic-grade authenticity verdicts.
           </p>
 
@@ -85,8 +85,8 @@ export default function About() {
         <div className="stats-row">
           {[
             { v: '80.21%', l: 'Signature Accuracy' },
-            { v: '0.92',   l: 'AUC Score (Outstanding)' },
-            { v: '64.17%', l: 'Deception Detection' },
+            { v: '96.33%', l: 'Clause Accuracy' },
+            { v: '0.90',   l: 'F1 Score (Outstanding)' },
             { v: '125M',   l: 'RoBERTa Parameters' },
           ].map(s => (
             <div key={s.l} className="stat-card glass">

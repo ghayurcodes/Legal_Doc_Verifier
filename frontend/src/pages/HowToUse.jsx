@@ -1,52 +1,53 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 const steps = [
   {
     n: '01',
-    title: 'Prepare Your Reference Signature',
-    desc: 'Take a scan or clear photo of the known-genuine signature — this is your baseline. This is typically taken from an official document already on file (passport, bank form, ID). Make sure the image is clear, horizontal, and has a light background.',
-    tip: '💡 Tip: Use a flatbed scanner for best results. Avoid dark or blurry photos.',
+    title: 'Select Verification Mode',
+    desc: 'Choose between Signature Only, Contract Scan, or Full Verification based on what you need to analyse.',
+    tip: '💡 Tip: Full Verification provides the most comprehensive security check.',
   },
   {
     n: '02',
-    title: 'Prepare the Test Signature',
-    desc: 'This is the signature you want to verify — the one on the document in question. Scan or photograph it under the same conditions as the reference for the most accurate comparison.',
+    title: 'Upload Signature Images',
+    desc: 'Take a scan or clear photo of the known-genuine signature (your baseline), and the test signature (the one under examination). Make sure the images are clear and horizontal.',
     tip: '💡 Tip: Both images should be similar resolution and lighting if possible.',
   },
   {
     n: '03',
-    title: 'Copy the Document Text',
-    desc: 'Paste the written content of the legal document into the text field. This is the body of the contract, agreement, or claim. The AI will analyse linguistic patterns for deception signals. Minimum one full sentence required.',
-    tip: '💡 Tip: More text = better analysis. Short phrases may not give meaningful results.',
+    title: 'Paste the Contract Text',
+    desc: 'Paste the written content of the legal document into the text field. The AI will scan the text line-by-line looking for unfair, predatory, or high-risk legal clauses.',
+    tip: '💡 Tip: More text = better analysis. Minimum 20 characters required.',
   },
   {
     n: '04',
-    title: 'Click "Verify Document Authenticity"',
-    desc: 'The system sends both images and the text to the AI pipeline. The Siamese CNN compares signatures, RoBERTa analyses the text, and the Supervisor Agent combines both results into a final verdict.',
-    tip: '⏱ Processing takes 10–30 seconds. SHAP analysis is the slowest step.',
+    title: 'Run AI Analysis',
+    desc: 'The system sends the data to the deep learning models. The Siamese CNN compares signature strokes, RoBERTa analyses the clauses, and the Supervisor Agent calculates the total risk.',
+    tip: '⏱ Processing takes 10–20 seconds while the SHAP explainability runs.',
   },
   {
     n: '05',
-    title: 'Read the Analysis Results',
-    desc: 'You will see: (1) A final AUTHENTIC or SUSPICIOUS verdict, (2) Individual scores for signature similarity and text deception, (3) A Grad-CAM heatmap showing which parts of the signature the model focused on, (4) SHAP word attribution showing which words drove the deception score.',
-    tip: '🔴 Red regions in the heatmap = high model attention. Blue = low attention.',
+    title: 'Review Visual Evidence (XAI)',
+    desc: 'Our system does not make black-box decisions. It provides a Grad-CAM heatmap showing exactly which pen strokes failed the check, and SHAP highlights showing exactly which words are predatory.',
+    tip: '🔴 Red regions in heatmaps/text = high risk or model attention.',
   },
   {
     n: '06',
-    title: 'Interpret the Scores',
-    desc: 'Signature Similarity ≥ 0.70 → GENUINE. Text Deception ≥ 0.45 → DECEPTIVE. Combined Risk ≥ 0.40 → SUSPICIOUS overall. Remember: this is a screening tool. A SUSPICIOUS verdict should trigger further human expert review, not be used as a standalone verdict.',
+    title: 'Interpret the Final Verdict',
+    desc: 'If the risk score crosses the threshold, the document is flagged as SUSPICIOUS. Remember: this is a screening tool. A SUSPICIOUS verdict should trigger further human expert review.',
     tip: '⚖️ This system is an AI assistant for forensic screening — not a legal judgment.',
   },
 ]
 
 const faqs = [
   {
-    q: 'Why does the text model sometimes miss fraud in contracts?',
-    a: 'The text model was trained on political statements (LIAR dataset). Formal legal language patterns differ from political speech. It detects linguistic deception patterns, not domain-specific legal fraud.',
+    q: 'How accurate is the Unfair Clause detection?',
+    a: 'The RoBERTa model was fine-tuned on the LexGLUE UNFAIR-ToS benchmark—a professional dataset of real terms of service. It achieves an outstanding 96.33% accuracy in flagging predatory or risky clauses.',
   },
   {
     q: 'Can a skilled forger fool the signature model?',
-    a: 'Possibly — the model achieves 80.21% on skilled forgeries. A forger copies what they see (overall shape), but the CNN compares 128-dimensional micro-pattern embeddings invisible to the human eye. Most skilled forgeries still fail the comparison.',
+    a: 'Possibly, but it is very difficult. The model achieves 80.21% accuracy even on skilled forgeries. A forger copies what they see (overall shape), but the Siamese CNN compares 128-dimensional micro-pattern embeddings that are practically invisible to the human eye.',
   },
   {
     q: 'What image formats are supported?',
@@ -54,9 +55,24 @@ const faqs = [
   },
   {
     q: 'Why does the heatmap sometimes look flat?',
-    a: 'Grad-CAM works best on classifiers. Since our Siamese network computes similarity (not a class), we approximate by backpropagating through the embedding norm. For uniform signatures, gradients can flatten out.',
+    a: 'Grad-CAM works best on classifiers. Since our Siamese network computes similarity (not a specific class), we approximate the heatmap by backpropagating through the embedding norm. For very uniform signatures, the gradients can flatten out.',
   },
 ]
+
+function FaqItem({ q, a }) {
+  const [isOpen, setIsOpen] = useState(false)
+  return (
+    <div className={`faq-item ${isOpen ? 'open' : ''}`}>
+      <button className="faq-question" onClick={() => setIsOpen(!isOpen)}>
+        {q}
+        <span className="faq-icon">▼</span>
+      </button>
+      <div className="faq-answer">
+        <p>{a}</p>
+      </div>
+    </div>
+  )
+}
 
 export default function HowToUse() {
   return (
@@ -65,7 +81,7 @@ export default function HowToUse() {
       <div className="section-heading">
         <span className="eyebrow">User Guide</span>
         <h2>How to Verify a Document</h2>
-        <p>Follow these six steps to get a forensic-grade authenticity analysis in under a minute.</p>
+        <p>Follow these steps to get a forensic-grade authenticity analysis in under a minute.</p>
       </div>
 
       {/* Steps */}
@@ -89,12 +105,9 @@ export default function HowToUse() {
           <h2>Common Questions</h2>
         </div>
 
-        <div className="feature-grid">
+        <div className="faq-list">
           {faqs.map(f => (
-            <div key={f.q} className="feature-card glass">
-              <h3 style={{ marginBottom: 12, fontSize: '0.95rem' }}>❓ {f.q}</h3>
-              <p>{f.a}</p>
-            </div>
+            <FaqItem key={f.q} q={f.q} a={f.a} />
           ))}
         </div>
       </div>
