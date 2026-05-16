@@ -57,6 +57,10 @@ const faqs = [
     q: 'Why does the heatmap sometimes look flat?',
     a: 'Grad-CAM works best on classifiers. Since our Siamese network computes similarity (not a specific class), we approximate the heatmap by backpropagating through the embedding norm. For very uniform signatures, the gradients can flatten out.',
   },
+  {
+    q: 'Why does the Text Analysis take longer than Signature Verification?',
+    a: 'The text analysis takes 10–20 seconds because of the SHAP Explainability module. In order to attribute a score to every single word, SHAP has to iteratively query the massive 125M-parameter RoBERTa transformer dozens of times. Furthermore, RoBERTa uses a self-attention mechanism with O(N²) complexity, meaning longer contracts take exponentially more time to process.',
+  },
 ]
 
 function FaqItem({ q, a }) {

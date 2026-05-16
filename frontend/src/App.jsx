@@ -5,6 +5,7 @@ import Footer from './components/Footer'
 import About from './pages/About'
 import HowToUse from './pages/HowToUse'
 import Verify from './pages/Verify'
+import Metrics from './pages/Metrics'
 
 export default function App() {
   useEffect(() => {
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/"          element={<About />} />
           <Route path="/how-to-use" element={<HowToUse />} />
           <Route path="/verify"    element={<Verify />} />
+          <Route path="/metrics"   element={<Metrics />} />
           <Route path="*"          element={<Navigate to="/" replace />} />
         </Routes>
       </main>

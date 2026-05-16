@@ -84,14 +84,15 @@ export default function About() {
       <div className="section">
         <div className="stats-row">
           {[
-            { v: '80.21%', l: 'Signature Accuracy' },
-            { v: '95.83%', l: 'Clause Accuracy' },
-            { v: '89.65%', l: 'Macro F1 Score' },
-            { v: '125M',   l: 'RoBERTa Parameters' },
+            { v: '80.21%', l: 'Signature Accuracy', sub: 'Highly accurate even on skilled human forgeries.' },
+            { v: '95.83%', l: 'Clause Accuracy', sub: 'Near-perfect detection of predatory legal phrasing.' },
+            { v: '89.65%', l: 'Macro F1 Score', sub: 'Proves the AI is smart, not just guessing "Safe" to inflate accuracy.' },
+            { v: '125M',   l: 'RoBERTa Parameters', sub: 'Massive scale gives the AI deep contextual understanding.' },
           ].map(s => (
             <div key={s.l} className="stat-card glass">
               <span className="stat-value">{s.v}</span>
               <span className="stat-label">{s.l}</span>
+              <span className="stat-sub" style={{ fontSize: '0.8rem', color: '#999', marginTop: '8px', lineHeight: '1.4' }}>{s.sub}</span>
             </div>
           ))}
         </div>

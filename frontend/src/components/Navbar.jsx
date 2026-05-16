@@ -11,6 +11,7 @@ export default function Navbar() {
       <ul className="nav-links">
         <li><NavLink to="/"            className={({isActive}) => isActive ? 'active' : ''}>About</NavLink></li>
         <li><NavLink to="/how-to-use"  className={({isActive}) => isActive ? 'active' : ''}>How to Use</NavLink></li>
+        <li><NavLink to="/metrics"     className={({isActive}) => isActive ? 'active' : ''}>Metrics</NavLink></li>
         <li><NavLink to="/verify"      className={({isActive}) => isActive ? 'nav-cta active' : 'nav-cta'}>Verify Document</NavLink></li>
       </ul>
     </nav>
