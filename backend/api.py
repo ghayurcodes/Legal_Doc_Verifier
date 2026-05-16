@@ -26,7 +26,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
 from models.siamese_cnn    import SiameseNet
-from models.roberta_nlp    import DeceptionClassifier
+from models.roberta_nlp    import UnfairClauseClassifier
 from agents.preprocessing  import PreprocessingAgent
 from agents.signature_agent import SignatureAgent
 from agents.text_agent      import TextAgent
@@ -63,9 +63,9 @@ siamese_model.eval()
 print("[OK] Siamese CNN loaded")
 
 tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
-nlp_model  = DeceptionClassifier()
+nlp_model  = UnfairClauseClassifier()
 nlp_model.load_state_dict(
-    torch.load(os.path.join(SAVED, "roberta_deception.pt"),
+    torch.load(os.path.join(SAVED, "roberta_unfair_clause.pt"),
                map_location=DEVICE, weights_only=False)
 )
 nlp_model.eval()

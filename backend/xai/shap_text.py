@@ -73,7 +73,7 @@ class SHAPTextAgent:
 
     def get_top_words(self, text, n=5):
         """
-        Returns the top N most influential words for the deception score.
+        Returns the top N most influential words for the unfair score.
 
         Positive SHAP value → word pushed prediction toward DECEPTIVE
         Negative SHAP value → word pushed prediction toward TRUTHFUL

@@ -7,26 +7,24 @@ import pandas as pd
 
 # ─────────────────────────────────────────────────────────────
 # LABEL MAP
-# LIAR dataset has 6 labels — we simplify to binary:
-#   Truthful  (0): true, mostly-true, half-true
-#   Deceptive (1): barely-true, false, pants-fire
+# LexGLUE UNFAIR-ToS dataset — simplified to binary:
+#   SAFE   (0): clause has no unfair annotations
+#   UNFAIR (1): clause has at least one unfair annotation
 # ─────────────────────────────────────────────────────────────
 
 LABEL_MAP = {
-    'true':        0,
-    'mostly-true': 0,
-    'half-true':   0,
-    'barely-true': 1,
-    'false':       1,
-    'pants-fire':  1
+    'safe':   0,
+    'unfair': 1,
 }
 
 
 # ─────────────────────────────────────────────────────────────
 # PART 1: DATASET
-# Reads the LIAR .tsv files and prepares text + labels.
-# Each row in the TSV is one political statement with a label.
-# Column 1 = label (e.g. "false"), Column 2 = the statement text
+# Reads the LexGLUE UNFAIR-ToS data and prepares text + labels.
+# Each row contains one contract/ToS clause and its binary label:
+#   0 = SAFE, 1 = UNFAIR
+# Note: This class is used during training (in Colab notebooks).
+# At inference time the model is loaded directly from the .pt file.
 # ─────────────────────────────────────────────────────────────
 
 class LIARDataset(Dataset):
@@ -61,15 +59,14 @@ class LIARDataset(Dataset):
 
 
 # ─────────────────────────────────────────────────────────────
-# PART 2: DECEPTION CLASSIFIER
+# PART 2: UNFAIR CLAUSE CLASSIFIER
 # RoBERTa is a powerful language model pretrained on billions of words.
-# We FREEZE all its weights — it already understands language.
-# We only TRAIN our custom head on top of it.
-# This is called "feature extraction" — RoBERTa extracts features,
-# our head makes the final decision.
+# We FULLY FINE-TUNE all its weights on the LexGLUE UNFAIR-ToS dataset.
+# All 125M parameters are trainable — this is called "full fine-tuning".
+# The custom 3-layer MLP head outputs SAFE (0) or UNFAIR (1).
 # ─────────────────────────────────────────────────────────────
 
-class DeceptionClassifier(nn.Module):
+class UnfairClauseClassifier(nn.Module):
     """
     RoBERTa-base + 3-layer MLP head for binary legal clause classification.
     """
@@ -100,7 +97,7 @@ class DeceptionClassifier(nn.Module):
         cls = out.last_hidden_state[:, 0, :]                 # [CLS] token
         return self.classifier(cls)
 
-    def predict_deception_score(self, text: str, tokenizer, device) -> float:
+    def predict_unfair_score(self, text: str, tokenizer, device) -> float:
         self.eval()
         enc = tokenizer(
             text, return_tensors='pt',

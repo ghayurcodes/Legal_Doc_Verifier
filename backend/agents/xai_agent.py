@@ -6,7 +6,7 @@ import torch
 # XAI = Explainable AI
 # This agent coordinates BOTH explainability methods:
 #   - Grad-CAM  → for the signature image (which strokes look suspicious?)
-#   - SHAP      → for the text (which words triggered deception flag?)
+#   - SHAP      -> for the text (which words triggered unfair flag?)
 #
 # It is a thin wrapper — the actual logic lives in:
 #   xai/gradcam.py    → GradCAMAgent
@@ -30,7 +30,7 @@ class XAIAgent:
     def explain_text(self, text, n=5):
         """
         Runs SHAP on the document text.
-        Returns the top N words that most influenced the deception score.
+        Returns the top N words that most influenced the unfair score.
         Positive score = pushed toward deceptive.
         Negative score = pushed toward truthful.
         """

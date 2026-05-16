@@ -114,12 +114,12 @@ class UnfairClauseDataset(Dataset):
         }
 
 # ── Model ─────────────────────────────────────────────────────────────────────
-class DeceptionClassifier(nn.Module):
+class UnfairClauseClassifier(nn.Module):
     """
     RoBERTa-base + 3-layer MLP head for binary legal clause classification.
 
-    Class name kept as 'DeceptionClassifier' for backend/api.py compatibility.
-    Filename roberta_deception.pt is also unchanged — pure drop-in replacement.
+    Class name kept as 'UnfairClauseClassifier' for backend/api.py compatibility.
+    Filename roberta_unfair_clause.pt is also unchanged — pure drop-in replacement.
 
     Architecture improvements vs original:
       • nn.LayerNorm after each hidden layer  → stable gradient flow
@@ -153,13 +153,13 @@ class DeceptionClassifier(nn.Module):
         cls = out.last_hidden_state[:, 0, :]                 # [CLS] token
         return self.classifier(cls)
 
-    def predict_deception_score(self, text: str, tokenizer, device) -> float:
+    def predict_unfair_score(self, text: str, tokenizer, device) -> float:
         """
         Returns P(UNFAIR) in [0.0, 1.0].
           0.0 → clearly SAFE clause
           1.0 → clearly UNFAIR / predatory clause
 
-        Method name kept as predict_deception_score for backend/api.py compatibility.
+        Method name kept as predict_unfair_score for backend/api.py compatibility.
         Use INFERENCE_THRESHOLD (0.45) — not 0.50 — to match the backend.
         """
         self.eval()
@@ -214,11 +214,11 @@ LR_HEAD      = 5e-5    # higher LR for the newly-initialised classifier head
 DROPOUT      = 0.3
 PATIENCE     = 4       # stop after 4 epochs with no macro-F1 improvement
 ACCUM_STEPS  = 2       # gradient accumulation → effective batch = 32 × 2 = 64
-SAVE_PATH    = '/content/roberta_deception.pt'
+SAVE_PATH    = '/content/roberta_unfair_clause.pt'
 
 # ── Initialise model (with seed for reproducibility) ─────────────────────────
 seed_everything(SEED)
-model = DeceptionClassifier(dropout=DROPOUT).to(DEVICE)
+model = UnfairClauseClassifier(dropout=DROPOUT).to(DEVICE)
 
 # ── Class weights — sklearn balanced ─────────────────────────────────────────
 # n_samples / (n_classes × class_count) for each class.
@@ -433,7 +433,7 @@ sanity_cases = [
 
 passed = 0
 for text, expected in sanity_cases:
-    score  = model.predict_deception_score(text, tokenizer, DEVICE)
+    score  = model.predict_unfair_score(text, tokenizer, DEVICE)
     pred   = 1 if score > INFERENCE_THRESHOLD else 0
     ok     = "✓" if pred == expected else "✗"
     label  = "🚨 UNFAIR" if score > INFERENCE_THRESHOLD else "✅ SAFE  "
@@ -482,15 +482,15 @@ DRIVE_FOLDER = '/content/drive/MyDrive/Colab Notebooks/sem_project_231570/models
 os.makedirs(DRIVE_FOLDER, exist_ok=True)
 
 # Model weights — same filename as before, drop-in replacement for backend
-shutil.copy('/content/roberta_deception.pt',         f'{DRIVE_FOLDER}/roberta_deception.pt')
+shutil.copy('/content/roberta_unfair_clause.pt',         f'{DRIVE_FOLDER}/roberta_unfair_clause.pt')
 shutil.copy('/content/roberta_training_curves.png',  f'{DRIVE_FOLDER}/roberta_training_curves.png')
 shutil.copy('/content/roberta_evaluation.png',       f'{DRIVE_FOLDER}/roberta_evaluation.png')
 
 print("✅ All files saved to Google Drive!")
 print(f"   Location: {DRIVE_FOLDER}/")
 print("\nNext steps:")
-print("  1. Download roberta_deception.pt from Drive to your PC")
-print("  2. Put it in: legal_doc_verifier/backend/models/saved/roberta_deception.pt")
+print("  1. Download roberta_unfair_clause.pt from Drive to your PC")
+print("  2. Put it in: legal_doc_verifier/backend/models/saved/roberta_unfair_clause.pt")
 print("     (REPLACE the existing file — same filename, drop-in replacement!)")
 print("  3. Restart the backend: python -m uvicorn api:app --reload --port 8000")
 print("  4. Frontend will now show improved UNFAIR CLAUSE RISK scores.")

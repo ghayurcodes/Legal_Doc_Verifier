@@ -7,11 +7,11 @@
 
 This project is an **AI-powered Legal Document Authenticity Verifier**. It takes a legal document and checks two things:
 1. **Is the signature genuine or forged?** (using a deep learning image model)
-2. **Is the written text truthful or deceptive?** (using a language model)
+2. **Does the contract contain unfair or predatory clauses?** (using a fine-tuned legal NLP model)
 
 It then combines both results and gives a final verdict: **AUTHENTIC** or **SUSPICIOUS**.
 
-The system also **explains its decision** — it shows a heatmap of which parts of the signature looked suspicious, and which specific words in the text pushed it toward "deceptive."
+The system also **explains its decision** — it shows a heatmap of which parts of the signature looked suspicious, and which specific words in the text pushed it toward "unfair."
 
 ---
 
@@ -26,20 +26,20 @@ User uploads → Reference Signature + Test Signature + Document Text
                │  - Clean and tokenize text    │
                └──────────────────────────────┘
                       ↓              ↓
-        ┌─────────────────┐   ┌──────────────────┐
-        │  Signature Agent │   │   Text Agent      │
-        │  Siamese CNN     │   │   RoBERTa NLP     │
-        │  (VGG16 backbone)│   │   Classifier      │
-        └─────────────────┘   └──────────────────┘
-             sig_score              deception_score
-        (0=forged, 1=genuine)   (0=truthful, 1=deceptive)
+         ┌─────────────────┐   ┌──────────────────┐
+         │  Signature Agent │   │   Text Agent      │
+         │  Siamese CNN     │   │   RoBERTa NLP     │
+         │  (VGG16 backbone)│   │   Classifier      │
+         └─────────────────┘   └──────────────────┘
+              sig_score              unfair_score
+         (0=forged, 1=genuine)   (0=safe, 1=unfair)
                       ↓              ↓
                ┌──────────────────────────────┐
                │      Supervisor Agent         │
-               │  Combined Risk =              │
-               │  (0.6 × sig_risk) +           │
-               │  (0.4 × text_risk)            │
-               │  If risk ≥ 0.5 → SUSPICIOUS   │
+                │  Combined Risk =              │
+                │  (0.6 × sig_risk) +           │
+                │  (0.4 × unfair_score)         │
+                │  If risk ≥ 0.40 → SUSPICIOUS  │
                └──────────────────────────────┘
                               ↓
                ┌──────────────────────────────┐
@@ -62,12 +62,12 @@ User uploads → Reference Signature + Test Signature + Document Text
 - **Size:** 2,640 signature images (24 genuine + 24 forged per writer)
 - **Why used:** Industry-standard benchmark for offline signature verification research
 
-### LIAR (Text Deception Detection)
-- **Source:** PolitiFact.com, compiled by researchers at UC Santa Barbara
-- **What it contains:** 12,836 real political statements, each rated by human fact-checkers
-- **Labels:** true, mostly-true, half-true, barely-true, false, pants-on-fire
-- **Binary mapping:** true/mostly-true/half-true → Truthful (0) | barely-true/false/pants-fire → Deceptive (1)
-- **Why used:** Most widely cited benchmark for automated fact-checking and deception detection
+### LexGLUE UNFAIR-ToS (Unfair Clause Detection)
+- **Source:** `coastalcph/lex_glue` on HuggingFace — created by researchers at the University of Copenhagen
+- **What it contains:** Thousands of sentences extracted from real Terms of Service contracts across major platforms, annotated by legal experts into 8 unfair clause categories
+- **Labels:** Binary — SAFE (no unfair annotations) vs. UNFAIR (any unfair annotation present)
+- **Class imbalance:** Approximately 9:1 SAFE:UNFAIR ratio, handled using Weighted CrossEntropyLoss
+- **Why used:** Peer-reviewed legal NLP benchmark — the standard dataset for contract clause fairness research
 
 ---
 
@@ -104,7 +104,7 @@ Think of it like: instead of asking "is this signature real?", it asks "does thi
 
 ---
 
-## 5. Model 2 — RoBERTa Text Classifier (Deception Detection)
+## 5. Model 2 — RoBERTa Text Classifier (Unfair Clause Detection)
 
 ### What is RoBERTa?
 RoBERTa (Robustly Optimized BERT Pretraining Approach) is a **transformer-based language model** developed by Facebook AI in 2019. It was pre-trained on 160GB of text from the internet. It understands the meaning of words in context (not just individual words).
@@ -114,43 +114,43 @@ RoBERTa (Robustly Optimized BERT Pretraining Approach) is a **transformer-based 
 
 ### Architecture
 - **Base model:** roberta-base (125M parameters)
-- **Our modification:** Removed RoBERTa's original language model head. Added our own 3-layer classifier head (Truthful / Deceptive)
-- **Classifier head:** Linear(768 → 512) → ReLU → Dropout(0.3) → Linear(512 → 128) → ReLU → Dropout(0.3) → Linear(128 → 2)
-- **Input:** Raw statement text, tokenized to max **256 tokens**
+- **Our modification:** Removed RoBERTa's original language model head. Added our own 3-layer classifier head (SAFE / UNFAIR)
+- **Classifier head:** Linear(768 → 512) → LayerNorm → ReLU → Dropout(0.3) → Linear(512 → 128) → LayerNorm → ReLU → Dropout(0.15) → Linear(128 → 2)
+- **Input:** Contract/clause text, tokenized to max **256 tokens**
+- **Inference threshold:** 0.45 (tuned for higher recall on the UNFAIR class)
 
 ### Which layers were frozen/unfrozen?
-**All layers were fine-tuned (nothing frozen).** This is called "full fine-tuning" — it's the standard approach for hard classification datasets and gives the best accuracy on LIAR.
+**All layers were fine-tuned (nothing frozen).** This is called "full fine-tuning" — all 125M RoBERTa parameters were trainable. This gives the best accuracy on legal domain text.
 
 ### Training Setup
-- **Loss function:** Weighted CrossEntropyLoss — LIAR has more Truthful samples than Deceptive, so we give higher weight to Deceptive class to compensate
+- **Dataset:** LexGLUE UNFAIR-ToS (`coastalcph/lex_glue`) — ~9:1 SAFE:UNFAIR class imbalance
+- **Loss function:** Weighted CrossEntropyLoss — higher weight given to the UNFAIR class to compensate for the severe imbalance
 - **Optimizer:** AdamW — Adam with decoupled weight decay, standard for transformers
-- **Learning rate:** 1e-5 — must be very low for full fine-tuning to avoid "catastrophic forgetting"
-- **Scheduler:** Linear Warmup + Decay — LR starts at 0, ramps up for 10% of training, then linearly decays to 0
-- **Early stopping:** Patience = 2 — training stops if validation accuracy doesn't improve for 2 consecutive epochs
-- **Best epoch:** Epoch 4 (65.03% val accuracy)
+- **Learning rate:** 2e-5 — must be very low for full fine-tuning to avoid "catastrophic forgetting"
+- **Scheduler:** Linear Warmup + Cosine Decay — LR warms up then smoothly decays
+- **Epochs:** 10 — best checkpoint saved on peak Macro F1
 
 ### Results
-- **Accuracy:** 64.17%
-- **F1 Score:** 0.531
+- **Accuracy:** 95.83%
+- **Macro F1:** 89.65%
+- **AUC:** 0.956
 
 ---
 
-## 6. Why Are These Accuracies Acceptable?
+## 6. Why Are These Accuracies Strong?
 
 ### Signature (80.21%, AUC 0.92):
-Published CEDAR research papers report 75–85% under writer-independent evaluation. Our 80.21% is right in the middle of the published range. AUC of 0.92 is classified as "Outstanding."
+Published CEDAR research papers report 75–85% under writer-independent evaluation. Our 80.21% is right in the middle of the published range. AUC of 0.92 is classified as "Outstanding" in the forensic AI literature.
 
-### Text (64.17%):
-The LIAR dataset is one of the hardest NLP benchmarks. Published results:
-| Model | Accuracy |
-|---|---|
-| Naive Bayes | ~57% |
-| SVM | ~61% |
-| BERT fine-tuned | ~65% |
-| **Our RoBERTa** | **64.17%** |
-| State-of-the-art (2024) | ~68% |
+### Text (95.83%, Macro F1 89.65%, AUC 0.956):
+The LexGLUE UNFAIR-ToS benchmark is a peer-reviewed legal NLP dataset. Our results:
+| Model | Accuracy | Macro F1 |
+|---|---|---|
+| Baseline (majority class) | ~90% | ~47% |
+| BERT fine-tuned (published) | ~92% | ~82% |
+| **Our RoBERTa (full fine-tune)** | **95.83%** | **89.65%** |
 
-Our model is at **published research paper level**, not just semester-project level.
+High accuracy alone is misleading due to class imbalance (~9:1). The **Macro F1 of 89.65%** is the real performance indicator — it weights both classes equally and confirms the model genuinely detects UNFAIR clauses, not just predicting SAFE every time.
 
 ---
 
@@ -189,17 +189,17 @@ The EU AI Act requires high-risk AI systems (like legal document verification) t
 
 ```
 sig_risk     = 1.0 - signature_similarity    (genuine=low risk, forged=high risk)
-text_risk    = deception_score               (truthful=low, deceptive=high)
+text_risk    = unfair_clause_probability     (safe=low, unfair=high)
 
 combined_risk = (0.6 × sig_risk) + (0.4 × text_risk)
 
 if signature_similarity < 0.70  →  individually labelled FORGED
-if text_risk            ≥ 0.45  →  individually labelled DECEPTIVE
+if text_risk            ≥ 0.45  →  individually labelled UNFAIR CLAUSES DETECTED
 if combined_risk        ≥ 0.40  →  final verdict SUSPICIOUS
 else                             →  AUTHENTIC
 ```
 
-**Why 60/40 split?** A forged physical signature is stronger evidence of fraud than suspicious text alone. Text can be misleading without being fraud.
+**Why 60/40 split?** A forged physical signature is a stronger indicator of document fraud than unfair text clauses alone. A contract can contain harsh-but-legal clauses without being fraudulent.
 
 ---
 
@@ -221,7 +221,7 @@ else                             →  AUTHENTIC
 ## 10. Common Evaluator Questions & Answers
 
 **Q: Is this supervised or unsupervised learning?**
-A: Both models are supervised — the training data has labels (genuine/forged for signatures, true/false for text).
+A: Both models are supervised — the training data has labels (genuine/forged for signatures, SAFE/UNFAIR for text clauses).
 
 **Q: What is transfer learning?**
 A: We started with VGG16 and RoBERTa, which were already trained on massive datasets. We adapted them for our specific task instead of training from scratch. This saves time, data, and gives better accuracy.
@@ -257,7 +257,7 @@ A: Accuracy measures how often the model is correct at one specific threshold. A
 A: To test if the model can verify signatures of completely new people it has never seen. Writer-dependent splitting (same people in train and test) would give artificially high accuracy (95%+) but wouldn't reflect real-world performance.
 
 **Q: What would you improve with more time?**
-A: (1) Train on larger signature datasets, (2) Use a ViT (Vision Transformer) instead of VGG16, (3) Try larger RoBERTa-large instead of roberta-base, (4) Collect domain-specific legal document text data instead of political statements.
+A: (1) Train on larger signature datasets, (2) Use a ViT (Vision Transformer) instead of VGG16, (3) Try larger RoBERTa-large instead of roberta-base, (4) Expand training to more legal clause categories beyond SAFE/UNFAIR binary.
 
 **Q: What about skilled forgeries — if a forger copies a signature well, won't it score high and fool the system?**
 A: This is a real and well-known challenge in the field. A forger copies what they *see* — the overall shape. But the Siamese CNN compares 128-dimensional embedding vectors that encode micro-level stroke patterns invisible to the human eye: stroke curvature at the pixel level, pen pressure distribution, how strokes begin and end, relative proportions between letters. A forger produces different micro-patterns even when the overall shape looks the same. The CEDAR dataset specifically uses *skilled* forgeries — forgers who practiced before the final attempt. The model achieves 80.21% accuracy on those skilled forgeries. The remaining ~20% that fool the system is why this is a screening tool, not a final verdict — a human forensic document examiner investigates further.
@@ -265,8 +265,8 @@ A: This is a real and well-known challenge in the field. A forger copies what th
 **Q: How does the Grad-CAM heatmap work?**
 A: Grad-CAM (Gradient-weighted Class Activation Mapping) runs a backward pass through the network. It asks: *which spatial regions of the image caused the strongest gradient signal in the last convolutional layer?* Those regions are highlighted in red. It blends the heatmap (40%) with the original image (60%) so you can see exactly which pen strokes the model focused on. Sometimes the heatmap looks flat — this happens because Siamese networks compute similarity, not classification, so backpropagating through the embedding norm is an approximation.
 
-**Q: Why does the text model sometimes mark fraudulent contracts as TRUTHFUL?**
-A: The text model was trained on the LIAR dataset — short political statements from PolitiFact. It learned deception patterns in political language. Legal/financial contract fraud uses formal professional language ("internationally certified", "guaranteed returns") which the model associates with truthful formal speech. This is a dataset domain mismatch, not a model architecture failure. A domain-specific legal fraud dataset would solve this.
+**Q: Why does the text model sometimes miss unfair clauses?**
+A: The model misses approximately 16% of unfair clauses (28 false negatives out of 172 total UNFAIR clauses in the test set). These are typically **short, subtle clauses** where predatory language is embedded in otherwise neutral-sounding sentences. The inference threshold is set at 0.45 (instead of 0.5) to increase recall on the UNFAIR class, accepting slightly more false positives. The Macro F1 of 89.65% reflects this trade-off accurately.
 
 **Q: What does the similarity score mean? Why are the values close together?**
 A: The score is computed as `exp(−euclidean_distance)` between the two signature embeddings. Identical signatures score ≈1.0. Genuine pairs from the same person score ~0.75–0.95. Forged pairs score ~0.30–0.65. The system uses a 0.70 threshold — anything below that is classified as FORGED.
@@ -277,4 +277,4 @@ A: No. The `.py` files only define the layer structure (blueprint). The trained 
 ---
 
 *This document covers the full technical scope of the Legal Document Authenticity Verifier project.*
-*Signature Model: Siamese CNN (VGG16) | Text Model: RoBERTa-base | Interface: React + FastAPI*
+*Signature Model: Siamese CNN (VGG16) — CEDAR Dataset | Text Model: RoBERTa-base — LexGLUE UNFAIR-ToS | Interface: React + FastAPI*

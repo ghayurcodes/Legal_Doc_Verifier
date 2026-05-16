@@ -20,8 +20,8 @@ class TextAgent:
         """
         text: a cleaned string from PreprocessingAgent
 
-        Returns deception probability between 0.0 and 1.0.
+        Returns unfair clause probability between 0.0 and 1.0.
         The closer to 1.0, the more likely the text contains deceptive claims.
         """
-        score = self.model.predict_deception_score(text, self.tokenizer, self.device)
+        score = self.model.predict_unfair_score(text, self.tokenizer, self.device)
         return score

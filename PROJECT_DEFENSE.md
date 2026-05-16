@@ -8,8 +8,9 @@
 |---|---|---|
 | Siamese CNN (Signature Verification) | Accuracy | **80.21%** |
 | Siamese CNN (Signature Verification) | AUC | **0.9209** |
-| RoBERTa (Text Deception Detection) | Accuracy | **64.17%** |
-| RoBERTa (Text Deception Detection) | F1 Score | **0.531** |
+| RoBERTa (Unfair Clause Detection) | Accuracy | **95.83%** |
+| RoBERTa (Unfair Clause Detection) | Macro F1 | **89.65%** |
+| RoBERTa (Unfair Clause Detection) | AUC | **0.956** |
 
 ---
 
@@ -40,52 +41,54 @@
 
 ---
 
-## 🛡️ How to Defend the RoBERTa Text Model (64%, F1 0.53)
+## 🛡️ How to Defend the RoBERTa Text Model (95.83%, Macro F1 89.65%)
 
-### If asked: "64% seems low, why?"
+### If asked: "What does the RoBERTa model detect?"
 
-> "The LIAR dataset is one of the most challenging NLP benchmarks in academic research.
-> It contains 12,836 real political statements from PolitiFact, labeled by human fact-checkers.
-> The challenge is that the model only sees the raw text — no source, no date, no context.
-> **Even trained human annotators struggle to exceed 60% accuracy** when reading these statements
-> without additional context. Published results for transformer models on binary LIAR are:"
+> "The model detects **unfair and predatory legal clauses** in contracts and Terms of Service
+> documents. It was fine-tuned on the **LexGLUE / UNFAIR-ToS dataset**, a peer-reviewed legal
+> NLP benchmark created by researchers at the University of Copenhagen. It flags clauses such as
+> unilateral termination rights, liability exclusions, mandatory arbitration waivers, and
+> unilateral contract modification rights — all patterns that courts have historically ruled
+> as potentially unfair to consumers."
 
-| Model | Binary LIAR Accuracy |
-|---|---|
-| Naive Bayes | ~57% |
-| SVM | ~61% |
-| BERT (fine-tuned, 2019 paper) | ~65% |
-| **Our RoBERTa** | **64.17%** |
-| State-of-the-art (2024) | ~68% |
+### If asked: "What dataset did you use?"
 
-> "Our model is at **research paper level**, not just semester-project level."
+> "We used the **LexGLUE UNFAIR-ToS subset** (from `coastalcph/lex_glue` on HuggingFace).
+> This dataset contains thousands of sentences extracted from real Terms of Service contracts
+> across major platforms, annotated by legal experts into 8 unfair clause categories.
+> We simplified this to a binary task: SAFE (no unfair annotations) vs. UNFAIR (any unfair annotation).
+> The dataset is significantly imbalanced (~9:1 SAFE:UNFAIR ratio), which we handled using
+> weighted CrossEntropy loss during training."
 
-### If asked: "Why not use a different dataset?"
+### If asked: "Why 95.83% and not 100%?"
 
-> "LIAR is the most widely cited and cited benchmark for automated fact-checking and deception
-> detection. Using it demonstrates that we are working with a real, standardized, peer-reviewed
-> dataset rather than a toy dataset. The difficulty of LIAR is a feature, not a bug — it proves
-> that the problem of detecting deception from text alone is genuinely hard."
+> "The model misses approximately 16% of unfair clauses (see confusion matrix: 28 false negatives
+> out of 172 total UNFAIR clauses). These are typically **short, subtle clauses** where unfair
+> language is camouflaged in otherwise neutral-sounding sentences. The Macro F1 of 89.65%
+> more accurately represents performance across both classes — an excellent result given the
+> severe class imbalance."
 
 ### Key talking point:
-> "The value of this component is not just the 64% accuracy — it is the **SHAP explainability**.
-> The system highlights the specific words in the document that are pushing the score toward
-> 'deceptive'. This gives a human reviewer an actionable signal, not just a black-box prediction."
+> "What makes this component powerful is the combination of the **RoBERTa model** and
+> **SHAP explainability**. The system does not just say 'this contract is risky' — it highlights
+> the exact words and phrases that triggered the flag. A lawyer or consumer can then review
+> specifically those highlighted sections, making this a practical legal screening tool."
 
 ---
 
 ## 🛡️ How to Defend the Combined System
 
-### If asked: "The individual models aren't very accurate, so why combine them?"
+### If asked: "Why combine both models?"
 
 > "This is the core insight of the multi-agent architecture. In the real world, a human forensic
 > expert does not verify a legal document by looking at only the signature OR only the text —
 > they look at both. Our Supervisor Agent fuses:
 > - Signature similarity score (weighted 60%) — the primary physical evidence
-> - Text deception score (weighted 40%) — the semantic content analysis
+> - Unfair clause probability (weighted 40%) — the semantic content analysis
 >
-> A document that has a **genuine signature but deceptive text** will still be flagged as
-> suspicious. A document with a **forged signature but truthful text** will also be flagged.
+> A document that has a **genuine signature but predatory clauses** will still be flagged as
+> suspicious. A document with a **forged signature but clean text** will also be flagged.
 > Neither model alone could achieve this. The combined system is more robust than either
 > component individually."
 
@@ -103,13 +106,13 @@
 ### Why RoBERTa instead of BERT or GPT?
 > "RoBERTa (Robustly Optimized BERT Pretraining Approach) was published by Facebook AI in 2019
 > and consistently outperforms BERT on text classification benchmarks. It was pre-trained on
-> 160GB of text (10x more than BERT) with improved training procedures. For a downstream task
-> like deception detection, RoBERTa is the standard choice in academic literature."
+> 160GB of text (10x more than BERT) with improved training procedures. For legal text classification,
+> RoBERTa is the standard choice in academic NLP literature and achieves top results on LexGLUE."
 
 ### Why Grad-CAM + SHAP for explainability?
 > "Both methods are required by the EU AI Act's transparency requirements for high-risk AI
 > systems. Grad-CAM shows WHICH part of the signature the model focused on (spatial heatmap).
-> SHAP shows WHICH words in the text contributed to the deception score. Without these,
+> SHAP shows WHICH words in the text contributed to the unfair clause score. Without these,
 > the system is a black box. With them, a human expert can validate or override the AI decision."
 
 ---
@@ -117,20 +120,23 @@
 ## 📊 Training Configuration (for technical questions)
 
 ### Siamese CNN:
-- Backbone: VGG16 (ImageNet pre-trained, last block unfrozen)
+- Backbone: VGG16 (ImageNet pre-trained, last conv block unfrozen)
 - Loss: Contrastive Loss with learned margin
 - Optimizer: Adam with L2 weight decay
 - Augmentation: ColorJitter + RandomAffine (to prevent scanner-artifact shortcuts)
 - Evaluation: Writer-independent split (Signers 1–45 train, 46–55 test)
 - Epochs: 15 with StepLR scheduler
 
-### RoBERTa:
-- Backbone: roberta-base (125M parameters, fully fine-tuned)
-- Loss: Weighted CrossEntropy (to handle class imbalance in LIAR)
-- Optimizer: AdamW with linear warmup + decay scheduler
+### RoBERTa Unfair Clause Detector:
+- Backbone: roberta-base (125M parameters, **fully fine-tuned** — all layers trainable)
+- Dataset: LexGLUE UNFAIR-ToS (`coastalcph/lex_glue`)
+- Architecture head: Linear(768→512) → LayerNorm → ReLU → Dropout(0.3) → Linear(512→128) → LayerNorm → ReLU → Dropout(0.15) → Linear(128→2)
+- Loss: Weighted CrossEntropyLoss (to handle ~9:1 class imbalance)
+- Optimizer: AdamW with linear warmup + cosine decay scheduler
+- Learning rate: 2e-5
 - Max sequence length: 256 tokens
-- Early stopping: Patience = 2 epochs
-- Best checkpoint: Epoch 4 (65.03% val acc)
+- Training: 10 epochs, best checkpoint saved on peak Macro F1
+- Inference threshold: 0.45 (tuned for higher recall on UNFAIR class)
 
 ---
 

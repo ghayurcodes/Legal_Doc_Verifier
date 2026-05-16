@@ -5,7 +5,7 @@
 #
 # Flow:
 #   SignatureAgent → sig_score (0=forged, 1=genuine)
-#   TextAgent      → deception_score (0=truthful, 1=deceptive)
+#   TextAgent      -> unfair_score (0=safe, 1=unfair)
 #   SupervisorAgent → combines both → AUTHENTIC or SUSPICIOUS
 # ─────────────────────────────────────────────────────────────
 
@@ -24,10 +24,10 @@ class SupervisorAgent:
         self.text_weight = text_weight
         self.threshold   = threshold
 
-    def decide(self, sig_score, text_deception_score):
+    def decide(self, sig_score, text_unfair_score):
         """
         sig_score            : 0.0 (forged) → 1.0 (genuine)
-        text_deception_score : 0.0 (truthful) → 1.0 (deceptive)
+        text_unfair_score : 0.0 (safe) -> 1.0 (unfair)
 
         Step 1: Convert sig_score to risk (flip it — genuine=low risk)
         Step 2: Combine both risks with weights
@@ -37,7 +37,7 @@ class SupervisorAgent:
 
         # Convert signature similarity to RISK (higher = more suspicious)
         sig_risk  = 1.0 - sig_score           # genuine(1.0) → risk(0.0)
-        text_risk = text_deception_score       # deceptive(1.0) → risk(1.0)
+        text_risk = text_unfair_score          # unfair(1.0) -> risk(1.0)
 
         # Weighted combination
         combined_risk = (self.sig_weight * sig_risk) + (self.text_weight * text_risk)
@@ -52,7 +52,7 @@ class SupervisorAgent:
             'verdict':           verdict,
             'combined_risk':     round(combined_risk, 3),
             'signature_score':   round(sig_score, 3),
-            'deception_score':   round(text_deception_score, 3),
+            'unfair_score':   round(text_unfair_score, 3),
             'signature_verdict': 'FORGED'    if sig_score  < 0.70 else 'GENUINE',
             'text_verdict':      'DECEPTIVE' if text_risk  >= 0.45 else 'TRUTHFUL',
             'confidence':        confidence
