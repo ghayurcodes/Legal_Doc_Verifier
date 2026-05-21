@@ -21,7 +21,7 @@ class UnfairClauseClassifier(nn.Module):
         for param in self.roberta.parameters():
             param.requires_grad = True                       # full fine-tuning
 
-        hidden = self.roberta.config.hidden_size             # 768
+        hidden = self.roberta.config.hidden_size             # 768 
 
         self.classifier = nn.Sequential(
             nn.Linear(hidden, 512),
