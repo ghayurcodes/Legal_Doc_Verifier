@@ -1,10 +1,5 @@
 # Legal Document Authenticity Verifier
 
-[![Python](https://img.shields.io/badge/Python-3.13-blue.svg)](https://www.python.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.x-orange.svg)](https://pytorch.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-green.svg)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-18-blue.svg)](https://react.dev/)
-
 A multi-modal AI system that verifies the authenticity of legal contracts by performing physical and semantic validation in parallel. The system utilizes computer vision for signature verification (detecting skilled forgeries) and natural language processing for contract clause analysis (detecting unfair or predatory terms), fusing the outputs through a supervisor decision model.
 
 ---
