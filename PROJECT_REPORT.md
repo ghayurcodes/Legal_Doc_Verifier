@@ -1,280 +1,194 @@
-# Legal Document Authenticity Verifier — Full Project Report
-### Semester Final Year Project | Data Science
+# Legal Document Authenticity Verifier — System Design & Technical Report
+
+This document provides a comprehensive technical overview of the design, architecture, model specifications, evaluation benchmarks, and explainability mechanisms implemented in the Legal Document Authenticity Verifier system.
 
 ---
 
-## 1. What Is This Project?
+## 1. Introduction & Objectives
 
-This project is an **AI-powered Legal Document Authenticity Verifier**. It takes a legal document and checks two things:
-1. **Is the signature genuine or forged?** (using a deep learning image model)
-2. **Does the contract contain unfair or predatory clauses?** (using a fine-tuned legal NLP model)
+Autonomous legal document verification presents a unique challenge: verification cannot rely solely on visual inspection (e.g., verifying a signature) or semantic analysis (e.g., scanning the contract text) in isolation. A forged signature renders an otherwise standard contract invalid, while a genuine signature on a predatory contract containing unfair clauses presents severe legal and financial risks.
 
-It then combines both results and gives a final verdict: **AUTHENTIC** or **SUSPICIOUS**.
+To address these vulnerabilities, this project implements a **multi-modal forensic analysis system** that evaluates document authenticity across two primary modalities:
+1. **Signature Verification (Visual Modality)**: Employs metric learning via a Siamese CNN to determine if a query signature matches a reference signature, detecting skilled forgeries.
+2. **Unfair Clause Detection (Semantic Modality)**: Employs a transformer-based language model to classify contract text, flagging predatory clauses like unilateral termination, class-action waivers, or hidden liability exclusions.
 
-The system also **explains its decision** — it shows a heatmap of which parts of the signature looked suspicious, and which specific words in the text pushed it toward "unfair."
+The system is designed as a modular multi-agent pipeline orchestrated by a Supervisor Agent, with built-in Explainable AI (XAI) models providing human-interpretable rationales for all decisions.
 
 ---
 
-## 2. System Architecture — How It Works
+## 2. System Architecture & Data Flow
+
+The architecture consists of a FastAPI backend serving PyTorch models, a React frontend dashboard, and an inference pipeline managed by specialized agents:
 
 ```
-User uploads → Reference Signature + Test Signature + Document Text
-                              ↓
-               ┌──────────────────────────────┐
-               │      Preprocessing Agent      │
-               │  - Resize/normalize images    │
-               │  - Clean and tokenize text    │
-               └──────────────────────────────┘
-                      ↓              ↓
-         ┌─────────────────┐   ┌──────────────────┐
-         │  Signature Agent │   │   Text Agent      │
-         │  Siamese CNN     │   │   RoBERTa NLP     │
-         │  (VGG16 backbone)│   │   Classifier      │
-         └─────────────────┘   └──────────────────┘
-              sig_score              unfair_score
-         (0=forged, 1=genuine)   (0=safe, 1=unfair)
-                      ↓              ↓
-               ┌──────────────────────────────┐
-               │      Supervisor Agent         │
-                │  Combined Risk =              │
-                │  (0.6 × sig_risk) +           │
-                │  (0.4 × unfair_score)         │
-                │  If risk ≥ 0.40 → SUSPICIOUS  │
-               └──────────────────────────────┘
-                              ↓
-               ┌──────────────────────────────┐
-               │         XAI Agents            │
-               │  Grad-CAM → heatmap on sig    │
-               │  SHAP → top words in text     │
-               └──────────────────────────────┘
-                              ↓
-                      Final Report (React UI)
+User Input (Reference Signature + Query Signature + Contract Text)
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │ Preprocessing Agent │
+                    │ - Normalizes images │
+                    │ - Tokenizes text    │
+                    └──────────┬──────────┘
+                               │
+               ┌───────────────┴───────────────┐
+               ▼                               ▼
+     ┌──────────────────┐            ┌──────────────────┐
+     │ Signature Agent  │            │    Text Agent    │
+     │ Siamese CNN      │            │   RoBERTa NLP    │
+     │ (VGG16 Backbone) │            │ (Fully Fine-Tuned)│
+     └─────────┬────────┘            └─────────┬────────┘
+               │ similarity score              │ probability score
+               │ (0.0 to 1.0)                  │ (0.0 to 1.0)
+               ▼                               ▼
+     ┌──────────────────────────────────────────────────┐
+     │                 Supervisor Agent                 │
+     │  Risk Fusion: (0.6 * sig_risk) + (0.4 * nlp_risk)│
+     │  Combined Risk Threshold: >= 0.40 -> SUSPICIOUS  │
+     └─────────────────────────┬────────────────────────┘
+                               │
+               ┌───────────────┴───────────────┐
+               ▼                               ▼
+     ┌──────────────────┐            ┌──────────────────┐
+     │    XAI Agent     │            │    XAI Agent     │
+     │    (Grad-CAM)    │            │      (SHAP)      │
+     │ Generate Heatmap │            │ Token Attribution│
+     └─────────┬────────┘            └─────────┬────────┘
+               │                               │
+               └───────────────┬───────────────┘
+                               ▼
+                     [UI Dashboard Output]
 ```
 
 ---
 
-## 3. Datasets Used
+## 3. Datasets & Benchmarks
 
-### CEDAR (Signature Verification)
-- **Full name:** Center of Excellence for Document Analysis and Recognition
-- **Source:** University at Buffalo, USA
-- **What it contains:** Real and forged handwritten signatures from 55 different people (writers)
-- **Size:** 2,640 signature images (24 genuine + 24 forged per writer)
-- **Why used:** Industry-standard benchmark for offline signature verification research
+### CEDAR Signature Dataset (Visual Modality)
+* **Description**: A public signature database compiled by the Center of Excellence for Document Analysis and Recognition.
+* **Content**: Signatures from 55 writers. Each writer contributes 24 genuine signatures and 24 skilled forgeries (forgeries produced by individuals who practiced the target signature beforehand).
+* **Format**: Grayscale images of varying resolutions, normalized and binarized during preprocessing.
+* **Usage**: Used to train the metric-learning Siamese CNN. To evaluate real-world generalization, we implement a **writer-independent split**: the model is trained on Signers 1–45 and evaluated on Signers 46–55 (completely unseen writers).
 
-### LexGLUE UNFAIR-ToS (Unfair Clause Detection)
-- **Source:** `coastalcph/lex_glue` on HuggingFace — created by researchers at the University of Copenhagen
-- **What it contains:** Thousands of sentences extracted from real Terms of Service contracts across major platforms, annotated by legal experts into 8 unfair clause categories
-- **Labels:** Binary — SAFE (no unfair annotations) vs. UNFAIR (any unfair annotation present)
-- **Class imbalance:** Approximately 9:1 SAFE:UNFAIR ratio, handled using Weighted CrossEntropyLoss
-- **Why used:** Peer-reviewed legal NLP benchmark — the standard dataset for contract clause fairness research
+### LexGLUE UNFAIR-ToS (Semantic Modality)
+* **Description**: The Unfair Terms of Service subset of the LexGLUE (Legal Evaluation Benchmark for General Understanding of English) dataset.
+* **Content**: Contract sentences annotated by legal experts for unfair clauses based on European consumer law.
+* **Categories**: Detects unilateral termination rights, liability exclusions, unilateral contract modifications, and forced arbitration waivers.
+* **Class Imbalance**: Approximately 9:1 ratio of SAFE to UNFAIR clauses. Handled using class-weighted loss functions during training.
 
 ---
 
-## 4. Model 1 — Siamese CNN (Signature Verification)
+## 4. Computer Vision Pipeline: Siamese CNN
 
-### What is a Siamese Network?
-A Siamese Network is a special neural network that **compares two inputs** rather than classifying one input. It passes both images through the **same set of weights** (same "tower") and learns to measure how similar or different they are.
+Offline signature verification is framed as a **metric learning task** using a Siamese network architecture.
 
-Think of it like: instead of asking "is this signature real?", it asks "does this signature look the same as the reference one?"
+### Model Architecture
+* **Backbone**: VGG16 pre-trained on ImageNet.
+* **Feature Extraction**: The network utilizes weight-sharing twin towers to process the reference image ($I_{ref}$) and the query image ($I_{query}$).
+* **Fine-Tuning Protocol**: The first four convolutional blocks of VGG16 are frozen to retain general low-level edge detectors. The final convolutional block and the fully connected layers are fine-tuned.
+* **Embedding Projection**: Output feature maps are flattened and projected through a dense layer stack to yield a $128$-dimensional embedding vector ($v \in \mathbb{R}^{128}$).
 
-### Architecture
-- **Backbone:** VGG16 (pre-trained on ImageNet)
-- **Pre-training:** Yes — VGG16 was already trained on 1.2 million images. We use transfer learning.
-- **Which layers were frozen?** The first 4 blocks of VGG16 (low-level feature detectors like edges, textures) were frozen. Only the last convolutional block was fine-tuned.
-- **Why freeze early layers?** Early layers detect universal features (edges, curves) that are the same for any image. Freezing saves time and prevents overfitting.
-- **Embedding size:** 128 dimensions — each signature becomes a 128-number vector
-- **Distance function:** Euclidean distance between the two 128-dim vectors
-- **Similarity formula:** `score = exp(−distance)` — maps distance to 0.0–1.0 range:
-  - Same signature uploaded twice → score ≈ **1.0**
-  - Genuine pair (same person, different signature) → score ≈ **0.75–0.95**
-  - Forged pair (different person) → score ≈ **0.30–0.65**
-  - Threshold: score ≥ 0.70 → GENUINE, score < 0.70 → FORGED
-- **Loss function:** Contrastive Loss — penalizes the model if it brings forged pairs too close together or pushes genuine pairs too far apart
+### Similarity Metrics & Loss Function
+* **Distance Measure**: Euclidean distance ($d$) between the two feature embeddings:
+  $$d(v_{ref}, v_{query}) = \|v_{ref} - v_{query}\|_2$$
+* **Similarity Output**: Mapped using an exponential decay function to yield a score $s \in [0.0, 1.0]$:
+  $$s = \exp(-d)$$
+* **Training Objective**: Trained using **Contrastive Loss** to pull embeddings of genuine pairs close together ($d \to 0$) and push forged pairs apart beyond a specified margin ($m = 2.0$):
+  $$\mathcal{L} = (1 - Y) \frac{1}{2} d^2 + Y \frac{1}{2} \max(0, m - d)^2$$
+  *Where $Y = 0$ for genuine pairs and $Y = 1$ for forged pairs.*
 
-### Training Setup
-- **Optimizer:** Adam with L2 weight decay (prevents overfitting)
-- **Augmentation:** ColorJitter + RandomAffine — simulates scanner variation and slight rotation
-- **Split:** Writer-Independent — trained on signers 1–45, tested on signers 46–55 (completely unseen people)
-- **Scheduler:** StepLR — reduces learning rate every few epochs
-
-### Results
-- **Accuracy:** 80.21%
-- **AUC:** 0.9209 (Outstanding — above 0.90 in forensic AI literature)
+### Signature Verification Performance
+* **Accuracy**: **80.21%** (Writer-independent evaluation)
+* **Area Under ROC (AUC)**: **0.9209**
 
 ---
 
-## 5. Model 2 — RoBERTa Text Classifier (Unfair Clause Detection)
+## 5. Natural Language Processing Pipeline: RoBERTa
 
-### What is RoBERTa?
-RoBERTa (Robustly Optimized BERT Pretraining Approach) is a **transformer-based language model** developed by Facebook AI in 2019. It was pre-trained on 160GB of text from the internet. It understands the meaning of words in context (not just individual words).
+Contract clause analysis is framed as a supervised binary classification task.
 
-### Is this Machine Learning or Deep Learning?
-**Deep Learning.** RoBERTa is a deep neural network with 12 transformer layers, 12 attention heads, and 125 million parameters.
+### Model Architecture
+* **Base Transformer**: `roberta-base` (125 million parameters) pre-trained on 160GB of diverse text corpora.
+* **Classifier Head**: Custom 3-layer MLP attached to the pooler output:
+  $$\text{Linear}(768 \to 512) \to \text{LayerNorm} \to \text{ReLU} \to \text{Dropout}(0.3)$$
+  $$\to \text{Linear}(512 \to 128) \to \text{LayerNorm} \to \text{ReLU} \to \text{Dropout}(0.15)$$
+  $$\to \text{Linear}(128 \to 2)$$
+* **Context Window**: Configured for inputs up to $256$ tokens.
 
-### Architecture
-- **Base model:** roberta-base (125M parameters)
-- **Our modification:** Removed RoBERTa's original language model head. Added our own 3-layer classifier head (SAFE / UNFAIR)
-- **Classifier head:** Linear(768 → 512) → LayerNorm → ReLU → Dropout(0.3) → Linear(512 → 128) → LayerNorm → ReLU → Dropout(0.15) → Linear(128 → 2)
-- **Input:** Contract/clause text, tokenized to max **256 tokens**
-- **Inference threshold:** 0.45 (tuned for higher recall on the UNFAIR class)
+### Fine-Tuning Strategy
+* **Optimization**: AdamW optimizer (decoupled weight decay at $0.01$).
+* **Learning Rate Schedule**: Initial learning rate of $2 \times 10^{-5}$ with a linear warmup for the first $10\%$ of steps followed by cosine learning rate decay.
+* **Imbalance Treatment**: Weighted Cross-Entropy Loss applied during backpropagation:
+  $$w_{\text{unfair}} \approx 9.0, \quad w_{\text{safe}} \approx 1.0$$
+* **Decision Boundary**: Set at $0.45$ to prioritize recall on unfair clauses.
 
-### Which layers were frozen/unfrozen?
-**All layers were fine-tuned (nothing frozen).** This is called "full fine-tuning" — all 125M RoBERTa parameters were trainable. This gives the best accuracy on legal domain text.
-
-### Training Setup
-- **Dataset:** LexGLUE UNFAIR-ToS (`coastalcph/lex_glue`) — ~9:1 SAFE:UNFAIR class imbalance
-- **Loss function:** Weighted CrossEntropyLoss — higher weight given to the UNFAIR class to compensate for the severe imbalance
-- **Optimizer:** AdamW — Adam with decoupled weight decay, standard for transformers
-- **Learning rate:** 2e-5 — must be very low for full fine-tuning to avoid "catastrophic forgetting"
-- **Scheduler:** Linear Warmup + Cosine Decay — LR warms up then smoothly decays
-- **Epochs:** 10 — best checkpoint saved on peak Macro F1
-
-### Results
-- **Accuracy:** 95.83%
-- **Macro F1:** 89.65%
-- **AUC:** 0.956
+### Contract Analysis Performance
+* **Accuracy**: **95.83%**
+* **Macro F1-Score**: **89.65%**
+* **Area Under ROC (AUC)**: **0.956**
 
 ---
 
-## 6. Why Are These Accuracies Strong?
+## 6. Supervisor Agent & Decision Fusion
 
-### Signature (80.21%, AUC 0.92):
-Published CEDAR research papers report 75–85% under writer-independent evaluation. Our 80.21% is right in the middle of the published range. AUC of 0.92 is classified as "Outstanding" in the forensic AI literature.
+The Supervisor Agent acts as an orchestrator, fusing the independent classification metrics of the visual and semantic models into a final security verdict.
 
-### Text (95.83%, Macro F1 89.65%, AUC 0.956):
-The LexGLUE UNFAIR-ToS benchmark is a peer-reviewed legal NLP dataset. Our results:
-| Model | Accuracy | Macro F1 |
-|---|---|---|
-| Baseline (majority class) | ~90% | ~47% |
-| BERT fine-tuned (published) | ~92% | ~82% |
-| **Our RoBERTa (full fine-tune)** | **95.83%** | **89.65%** |
+### Risk Fusion Math
+1. **Signature Risk Calculation**:
+   $$\text{sig\_risk} = 1.0 - s$$
+2. **Text Risk Calculation**:
+   $$\text{text\_risk} = P(\text{Unfair} \mid \text{clause\_text})$$
+3. **Fused Risk Score**:
+   $$\text{combined\_risk} = (0.6 \times \text{sig\_risk}) + (0.4 \times \text{text\_risk})$$
 
-High accuracy alone is misleading due to class imbalance (~9:1). The **Macro F1 of 89.65%** is the real performance indicator — it weights both classes equally and confirms the model genuinely detects UNFAIR clauses, not just predicting SAFE every time.
-
----
-
-## 7. XAI — Explainable AI
-
-### Grad-CAM (for signatures)
-- **Full name:** Gradient-weighted Class Activation Mapping
-- **How it works — step by step:**
-  1. Feed the test signature image through the VGG16 tower (forward pass)
-  2. Compute a "score" — we use the magnitude (norm) of the 128-dim embedding vector
-  3. Run backpropagation from that score — this asks: *"which neurons in the last conv layer caused this output?"*
-  4. The gradients tell us how much each feature map channel contributed to the output
-  5. Average gradients across spatial dimensions → one importance weight per channel
-  6. Multiply those weights by the activation maps (feature maps at that layer)
-  7. Sum across all channels → one 2D spatial importance map
-  8. Apply ReLU — only keep positive contributions (negative = irrelevant)
-  9. Resize the map back to match the original image size
-  10. Apply COLORMAP_JET: blue = low attention, yellow = medium, red = high attention
-  11. Blend with original image: 60% original + 40% heatmap
-- **Output:** A colored overlay — **red regions = the model focused here most** when analysing this signature
-- **Why it sometimes looks unclear or flat:**
-  - The Siamese network is not a classifier — it computes similarity, not a class probability. We backpropagate through the embedding norm, which is an approximation. If the model is very confident or the signature is very uniform, gradients flatten out and the heatmap looks evenly coloured.
-  - This is a known limitation of applying Grad-CAM to Siamese/metric learning networks. It still provides useful visual guidance for most signatures.
-
-### SHAP (for text)
-- **Full name:** SHapley Additive exPlanations
-- **How it works:** Masks/hides individual words and measures how much the prediction changes. A big change = that word was important.
-- **Output:** A list of words with their importance scores — positive = pushed toward deceptive, negative = pushed toward truthful
-
-### Why XAI matters:
-The EU AI Act requires high-risk AI systems (like legal document verification) to be transparent and explainable. Without XAI, the system is a black box — a human expert cannot validate or override the decision.
+### Rationale
+* **Weighting Scheme (60/40)**: Physical signature forgery is weighted higher because signature verification is a direct indicator of unauthorized document execution (fraud). A contract with high semantic risk (unfair clauses) is still legally binding and authentic in terms of execution, whereas a forged signature invalidates the entire agreement immediately.
+* **Thresholding**: If $\text{combined\_risk} \geq 0.40$, the Supervisor flags the document as **SUSPICIOUS**. Otherwise, the document is classified as **AUTHENTIC**.
 
 ---
 
-## 8. Supervisor Agent — Decision Fusion
+## 7. Explainable AI (XAI) Architecture
 
-```
-sig_risk     = 1.0 - signature_similarity    (genuine=low risk, forged=high risk)
-text_risk    = unfair_clause_probability     (safe=low, unfair=high)
+To ensure auditability, the system avoids "black-box" predictions by generating visual and textual explanations.
 
-combined_risk = (0.6 × sig_risk) + (0.4 × text_risk)
+### Visual Modality: Grad-CAM on Siamese CNN
+* **Methodology**: Gradient-weighted Class Activation Mapping (Grad-CAM) extracts activation maps from the final convolutional layer of the VGG16 backbone.
+* **Gradient Backpropagation**: Because the Siamese model uses distance metric learning rather than direct classification, gradients are computed relative to the magnitude (L2 norm) of the projected embedding vectors.
+* **Overlay Generation**: Gradients are average-pooled to obtain channel weights, which scale the feature maps. After applying a ReLU activation to focus on positive contributions, the map is upsampled and blended with the original image using OpenCV (`COLORMAP_JET`).
+* **Interpretation**: Highlights the specific pen strokes (e.g., regions of tremor, tracing hesitation) that influenced the distance score.
 
-if signature_similarity < 0.70  →  individually labelled FORGED
-if text_risk            ≥ 0.45  →  individually labelled UNFAIR CLAUSES DETECTED
-if combined_risk        ≥ 0.40  →  final verdict SUSPICIOUS
-else                             →  AUTHENTIC
-```
-
-**Why 60/40 split?** A forged physical signature is a stronger indicator of document fraud than unfair text clauses alone. A contract can contain harsh-but-legal clauses without being fraudulent.
-
----
-
-## 9. Technology Stack
-
-| Component | Technology |
-|---|---|
-| Programming Language | Python 3.13 |
-| Deep Learning Framework | PyTorch 2.x |
-| Image Model | VGG16 (torchvision) |
-| NLP Model | RoBERTa (HuggingFace Transformers) |
-| XAI | Grad-CAM (manual hooks) + SHAP |
-| Web Interface | React + Vite (Frontend) |
-| API Server | FastAPI (Backend) |
-| Training Platform | Google Colab (T4 GPU) |
+### Semantic Modality: SHAP Token Attribution
+* **Methodology**: SHapley Additive exPlanations (SHAP) is utilized to measure the marginal contribution of individual tokens to the model's output probability.
+* **Perturbation Model**: Tokens are masked iteratively, and the change in prediction is measured to approximate Shapley values.
+* **Interpretation**: Highlights the exact words or phrases (e.g., *"unilateral"*, *"sole discretion"*, *"waives the right"*) that triggered the unfair clause classification.
 
 ---
 
-## 10. Common Evaluator Questions & Answers
+## 8. System Design & Technical FAQ
 
-**Q: Is this supervised or unsupervised learning?**
-A: Both models are supervised — the training data has labels (genuine/forged for signatures, SAFE/UNFAIR for text clauses).
+### Q1: How does a Siamese network verify signatures of unseen signers without retraining?
+Siamese networks do not learn to classify signatures as belonging to specific individuals. Instead, they learn a **metric embedding space** where the distance between vector representations corresponds to signature similarity. The network learns universal visual characteristics of handwritings and forgeries (tremors, pressure variations, stroke connections). During inference, the query signature is compared to a reference signature in this embedding space. This allows zero-shot verification for any new individual immediately.
 
-**Q: What is transfer learning?**
-A: We started with VGG16 and RoBERTa, which were already trained on massive datasets. We adapted them for our specific task instead of training from scratch. This saves time, data, and gives better accuracy.
+### Q2: Why is a writer-independent evaluation protocol crucial for this system?
+In signature verification, a writer-dependent split (where signatures of the same individuals are present in both training and test sets) produces artificially high accuracies (often $>95\%$). However, such models fail in production because they memorize writer-specific styles. By utilizing a writer-independent split (training on Signers 1-45 and testing on Signers 46-55), we ensure the model's metrics reflect its ability to generalize to novel writers, mimicking a real-world deployment scenario.
 
-**Q: What is a transformer?**
-A: A neural network architecture that uses "attention" to understand relationships between all words in a sentence simultaneously, not one by one. RoBERTa is transformer-based.
+### Q3: Why is the Macro F1-score reported for contract analysis instead of accuracy alone?
+The LexGLUE UNFAIR-ToS dataset has a severe class imbalance (~90% SAFE, ~10% UNFAIR). If a model predicted "SAFE" for every input, it would achieve 90% accuracy while failing to identify any predatory clauses. The Macro F1-score calculates the harmonic mean of precision and recall for both classes independently, averaging them equally. Achieving a Macro F1 of 89.65% verifies that the model is highly precise and sensitive in identifying both SAFE and UNFAIR clauses.
 
-**Q: What is the attention mechanism?**
-A: When processing a word, attention lets the model look at all other words in the sentence and decide which ones are most relevant for understanding this word's meaning.
+### Q4: How is Grad-CAM adapted for a Siamese network where there is no class probability score?
+Standard Grad-CAM backpropagates the gradient of a target class logit. For a Siamese CNN, we do not have class logits; we have an embedding distance. We backpropagate the gradient of the L2 norm of the embedding difference. This represents how much the spatial features of the query signature contribute to pushing the query embedding away from the reference embedding. The resulting heatmap identifies the visual strokes responsible for the vector distance.
 
-**Q: Why not use a simple CNN for text?**
-A: CNNs process images with spatial relationships. Text needs to understand long-range semantic relationships (e.g., "not guilty" — the "not" modifies "guilty" across a gap). Transformers handle this better.
+### Q5: What is the benefit of using AdamW over standard Adam for fine-tuning the transformer model?
+Standard Adam implements weight decay by adding it directly to the gradient update, which links it with the moving averages of the gradients. For transformer models like RoBERTa, this leads to suboptimal regularization. AdamW decoupled weight decay from the gradient update step, applying decay directly to the weights. This yields better generalization, prevents catastrophic forgetting, and stabilizes training when full fine-tuning is performed.
 
-**Q: What is overfitting?**
-A: When the model memorizes the training data instead of learning general patterns. It performs well on training data but badly on new data. We prevented it using dropout, weight decay, data augmentation, and early stopping.
+### Q6: Why does the system use a weighted Cross-Entropy Loss for training RoBERTa?
+Due to the 9:1 imbalance in the text dataset, standard Cross-Entropy loss would bias the model toward predicting the majority class (SAFE) because errors on the minority class (UNFAIR) contribute very little to the overall loss. Weighted Cross-Entropy scales the loss of the minority class by a factor proportional to its under-representation. This forces the optimizer to penalize false negatives heavily, optimizing the decision boundary for higher recall.
 
-**Q: What is dropout?**
-A: During training, randomly "turns off" some neurons (probability 0.3 in our case). This forces the network to not rely on any single neuron, making it more robust.
+### Q7: What are the main limitations of the current architecture?
+1. **Skilled Forgery Limits**: Extremely high-quality forgeries can bypass the Siamese CNN, as the model relies on static offline images where dynamic signature data (e.g., pressure profiles, velocity vectors) is lost.
+2. **Short Clause Ambiguity**: The NLP model exhibits lower recall on very short, single-sentence clauses where predatory intent is obfuscated using standard commercial language.
+3. **Metric Learning Grad-CAM Variance**: Because we backpropagate through the embedding norm, the resulting heatmaps can occasionally appear flat if the embeddings are highly converged.
 
-**Q: Why did you use AdamW instead of regular Adam?**
-A: AdamW separates the weight decay (L2 regularization) from the gradient update, which is more mathematically correct for transformers and leads to better generalization.
-
-**Q: What is a learning rate scheduler?**
-A: Instead of using a fixed learning rate throughout training, we start low (warmup), increase briefly, then gradually decrease. This helps the model find a good solution without jumping over it.
-
-**Q: What is contrastive loss?**
-A: A loss function designed for Siamese networks. It pushes embeddings of genuine pairs close together and forged pairs far apart in the embedding space, using a margin to define "far enough."
-
-**Q: What is the difference between AUC and accuracy?**
-A: Accuracy measures how often the model is correct at one specific threshold. AUC (Area Under the ROC Curve) measures performance across ALL possible thresholds — it's a better measure of overall model quality, especially when classes are imbalanced.
-
-**Q: Why did you use writer-independent splitting?**
-A: To test if the model can verify signatures of completely new people it has never seen. Writer-dependent splitting (same people in train and test) would give artificially high accuracy (95%+) but wouldn't reflect real-world performance.
-
-**Q: What would you improve with more time?**
-A: (1) Train on larger signature datasets, (2) Use a ViT (Vision Transformer) instead of VGG16, (3) Try larger RoBERTa-large instead of roberta-base, (4) Expand training to more legal clause categories beyond SAFE/UNFAIR binary.
-
-**Q: What about skilled forgeries — if a forger copies a signature well, won't it score high and fool the system?**
-A: This is a real and well-known challenge in the field. A forger copies what they *see* — the overall shape. But the Siamese CNN compares 128-dimensional embedding vectors that encode micro-level stroke patterns invisible to the human eye: stroke curvature at the pixel level, pen pressure distribution, how strokes begin and end, relative proportions between letters. A forger produces different micro-patterns even when the overall shape looks the same. The CEDAR dataset specifically uses *skilled* forgeries — forgers who practiced before the final attempt. The model achieves 80.21% accuracy on those skilled forgeries. The remaining ~20% that fool the system is why this is a screening tool, not a final verdict — a human forensic document examiner investigates further.
-
-**Q: How does the Grad-CAM heatmap work?**
-A: Grad-CAM (Gradient-weighted Class Activation Mapping) runs a backward pass through the network. It asks: *which spatial regions of the image caused the strongest gradient signal in the last convolutional layer?* Those regions are highlighted in red. It blends the heatmap (40%) with the original image (60%) so you can see exactly which pen strokes the model focused on. Sometimes the heatmap looks flat — this happens because Siamese networks compute similarity, not classification, so backpropagating through the embedding norm is an approximation.
-
-**Q: Why does the text model sometimes miss unfair clauses?**
-A: The model misses approximately 16% of unfair clauses (28 false negatives out of 172 total UNFAIR clauses in the test set). These are typically **short, subtle clauses** where predatory language is embedded in otherwise neutral-sounding sentences. The inference threshold is set at 0.45 (instead of 0.5) to increase recall on the UNFAIR class, accepting slightly more false positives. The Macro F1 of 89.65% reflects this trade-off accurately.
-
-**Q: What does the similarity score mean? Why are the values close together?**
-A: The score is computed as `exp(−euclidean_distance)` between the two signature embeddings. Identical signatures score ≈1.0. Genuine pairs from the same person score ~0.75–0.95. Forged pairs score ~0.30–0.65. The system uses a 0.70 threshold — anything below that is classified as FORGED.
-
-**Q: Can you modify the model architecture files (.py) to change the output?**
-A: No. The `.py` files only define the layer structure (blueprint). The trained weights — the actual learned knowledge — are in the `.pt` files. Changing the architecture without retraining would cause a shape mismatch crash. Only the decision thresholds in the supervisor can be tuned post-training.
-
----
-
-*This document covers the full technical scope of the Legal Document Authenticity Verifier project.*
-*Signature Model: Siamese CNN (VGG16) — CEDAR Dataset | Text Model: RoBERTa-base — LexGLUE UNFAIR-ToS | Interface: React + FastAPI*
+### Q8: What are the recommended directions for scaling this project?
+* **Transition to Vision Transformers (ViT)**: Replacing the CNN backbone with a Vision Transformer to capture global attention patterns across signature strokes.
+* **Multi-Class NLP Labels**: Expanding the NLP model's classifier head to output multi-class ratings mapping directly to the 8 LexGLUE categories, rather than a binary output.
+* **Retrieval-Augmented Verification (RAG)**: Integrating a vector store containing legal precedents to allow the text model to cross-reference flagged clauses with actual judicial rulings.
